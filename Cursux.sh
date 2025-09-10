@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Cursux - Gestionnaire de Curseurs Linux Avancé
-# Version 342.0 - Alternative complète à Custom Cursor pour Linux
-# Date de version : 10/09/2025 à 18:25
+# Version 344.0 - Alternative complète à Custom Cursor pour Linux
+# Date de version : 10/09/2025 à 18:30
 # Auteur: PapaOursPolaire
 # Licence: MIT
 
@@ -849,24 +849,26 @@ process_extracted_cursors() {
     local cursor_files=($(find "$extracted_dir" -type f \( -name "*.cur" -o -name "*.ani" -o -name "*.png" -o -name "*.gif" \) 2>/dev/null))
     
     if [ ${#cursor_files[@]} -eq 0 ]; then
-        # Vérifier si c'est une structure Custom Cursor (install.inf + info.customcur + sous-dossiers Normal/ etc.)
+        # ✅ Détection spéciale des packs Custom Cursor (install.inf + info.customcur + sous-dossiers Normal/Large/ExtraLarge)
         if [ -f "$extracted_dir/install.inf" ] || [ -f "$extracted_dir/info.customcur" ]; then
             echo -e "${CYAN}Structure Custom Cursor détectée${NC}"
             
-            # Déterminer le sous-dossier principal (Normal/ par défaut)
-            local normal_dir=$(find "$extracted_dir" -type d -iname "Normal" | head -n1)
-            if [ -n "$normal_dir" ]; then
-                echo -e "${YELLOW}Conversion des fichiers du dossier Normal/${NC}"
-                for cursor_file in "$normal_dir"/*.cur "$normal_dir"/*.ani; do
-                    [ -f "$cursor_file" ] || continue
-                    local base_name=$(basename "$cursor_file" | sed 's/\.[^.]*$//')
-                    convert_windows_cursor "$cursor_file" "${cursor_name}_${base_name}"
-                done
-                return 0
-            fi
+            # Parcourir les sous-dossiers connus
+            for variant in Normal Large ExtraLarge; do
+                local variant_dir=$(find "$extracted_dir" -type d -iname "$variant" | head -n1)
+                if [ -n "$variant_dir" ]; then
+                    echo -e "${YELLOW}Conversion des fichiers du dossier $variant/${NC}"
+                    for cursor_file in "$variant_dir"/*.cur "$variant_dir"/*.ani; do
+                        [ -f "$cursor_file" ] || continue
+                        local base_name=$(basename "$cursor_file" | sed 's/\.[^.]*$//')
+                        convert_windows_cursor "$cursor_file" "${cursor_name}_${variant}_${base_name}"
+                    done
+                fi
+            done
+            return 0
         fi
         
-        # Si ce n’est pas un pack Custom Cursor → fallback existant
+        # 🔙 Fallback existant (dossier contenant "cursor")
         local cursor_dirs=($(find "$extracted_dir" -type d -name "*cursor*" 2>/dev/null))
         if [ ${#cursor_dirs[@]} -gt 0 ]; then
             cp -r "${cursor_dirs[0]}" "$CURSORS_DIR/$cursor_name"
@@ -876,7 +878,7 @@ process_extracted_cursors() {
             return 1
         fi
     else
-        # Traiter chaque fichier de curseur trouvé
+        # 🔁 Traitement standard : chaque fichier trouvé est converti
         for cursor_file in "${cursor_files[@]}"; do
             local file_basename=$(basename "$cursor_file")
             local file_name="${file_basename%.*}"
