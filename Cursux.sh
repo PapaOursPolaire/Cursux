@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Cursux - Gestionnaire de Curseurs Linux Avancé
-# Version 344.0 - Alternative complète à Custom Cursor pour Linux
-# Date de version : 10/09/2025 à 18:30
+# Version 345.0 - Alternative complète à Custom Cursor pour Linux
+# Date de version : 10/09/2025 à 20:26
 # Auteur: PapaOursPolaire
 # Licence: MIT
 
@@ -47,9 +47,9 @@ UNDERLINE='\033[4m'
 NC='\033[0m'
 
 # Icônes et symboles
-ICON_SUCCESS="✅"
-ICON_ERROR="❌"
-ICON_WARNING="⚠️"
+ICON_SUCCESS="[OK]"
+ICON_ERROR="[ERROR]"
+ICON_WARNING="[WARNING]"
 ICON_INFO="ℹ️"
 ICON_DOWNLOAD="📥"
 ICON_UPLOAD="📤"
@@ -1451,18 +1451,22 @@ add_to_recent_cursors() {
     local cursor_name="$1"
     local user_data_file="$CURSUX_DIR/user_data.json"
     
-    # Créer le fichier s'il n'existe pas
     if [ ! -f "$user_data_file" ]; then
         echo '{"favorites": [], "recent": []}' > "$user_data_file"
     fi
     
-    # Ajouter aux récents (maximum 10)
+    # Fixed jq syntax
     jq --arg cursor "$cursor_name" \
-       '.recent |= ([$cursor] + (. - [$cursor])) | .recent |= .[:10]' \
-       "$user_data_file" > "$TEMP_DIR/new_user_data.json"
-    mv "$TEMP_DIR/new_user_data.json" "$user_data_file"
+        '.recent = ([$cursor] + (.recent - [$cursor])) | 
+        .recent = .recent[0:10]' \
+        "$user_data_file" > "$TEMP_DIR/new_user_data.json"
+    
+    if [ $? -eq 0 ]; then
+        mv "$TEMP_DIR/new_user_data.json" "$user_data_file"
+    else
+        rm -f "$TEMP_DIR/new_user_data.json"
+    fi
 }
-
 # Gestion des favoris
 manage_favorites() {
     local action="$1" # add, remove, list
