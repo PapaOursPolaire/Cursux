@@ -1,191 +1,213 @@
 #!/bin/bash
 
-# Cursux - Gestionnaire de Curseurs Linux Avancé
-# Version 345.0 - Alternative complète à Custom Cursor pour Linux
-# Date de version : 10/09/2025 à 20:26
-# Auteur: PapaOursPolaire
-# Licence: MIT
+# Cursux - Advanced Linux Cursor Manager
+# Version 314 - mise à jour  le 11/09/2025 à 21h30
+# Author: PapaOursPolaire on GitHub
 
-set -e
+set -euo pipefail
 
-# Configuration globale
-CURSUX_VERSION="2.0.0"
-CURSUX_DIR="$HOME/.cursux"
-CURSORS_DIR="$CURSUX_DIR/cursors"
-CUSTOM_DIR="$CURSUX_DIR/custom"
-TEMP_DIR="$CURSUX_DIR/temp"
-BACKUP_DIR="$CURSUX_DIR/backup"
-CACHE_DIR="$CURSUX_DIR/cache"
-REPO_DIR="$CURSUX_DIR/repository"
-CONFIG_FILE="$CURSUX_DIR/config.json"
-LOG_FILE="$CURSUX_DIR/cursux.log"
+# Global Configuration
+readonly CURSUX_VERSION="3.0.0"
+readonly CURSUX_DIR="$HOME/.cursux"
+readonly CURSORS_DIR="$CURSUX_DIR/cursors"
+readonly CUSTOM_DIR="$CURSUX_DIR/custom"
+readonly TEMP_DIR="$CURSUX_DIR/temp"
+readonly BACKUP_DIR="$CURSUX_DIR/backup"
+readonly CACHE_DIR="$CURSUX_DIR/cache"
+readonly REPO_DIR="$CURSUX_DIR/repository"
+readonly CONFIG_FILE="$CURSUX_DIR/config.json"
+readonly LOG_FILE="$CURSUX_DIR/cursux.log"
 
-# Configuration du repository GitHub
-GITHUB_REPO_USER="${CURSUX_GITHUB_USER:-}"
-GITHUB_REPO_NAME="${CURSUX_GITHUB_REPO:-}"
-GITHUB_API_BASE="https://api.github.com"
-GITHUB_RAW_BASE="https://raw.githubusercontent.com"
+# GitHub Repository Configuration
+readonly GITHUB_API_BASE="https://api.github.com"
+readonly GITHUB_RAW_BASE="https://raw.githubusercontent.com"
 
-# URLs par défaut pour les curseurs populaires
-DEFAULT_CURSORS_REPOS=(
+# Default Cursor Repositories
+readonly -a DEFAULT_CURSORS_REPOS=(
     "ful1e5/Bibata_Cursor"
     "keeferrourke/capitaine-cursors"
     "vinceliuice/McMojave-cursors"
     "alvatip/Nordzy-cursors"
+    "phisch/phinger-cursors"
+    "KDE/breeze"
+    "GNOME/adwaita-icon-theme"
 )
 
-# Couleurs et styles
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-BOLD='\033[1m'
-UNDERLINE='\033[4m'
-NC='\033[0m'
+# Colors and Styling
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly PURPLE='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly WHITE='\033[1;37m'
+readonly GRAY='\033[0;90m'
+readonly BOLD='\033[1m'
+readonly UNDERLINE='\033[4m'
+readonly NC='\033[0m'
 
-# Icônes et symboles
-ICON_SUCCESS="[OK]"
-ICON_ERROR="[ERROR]"
-ICON_WARNING="[WARNING]"
-ICON_INFO="ℹ️"
-ICON_DOWNLOAD="📥"
-ICON_UPLOAD="📤"
-ICON_CREATE="🎨"
-ICON_DELETE="🗑️"
-ICON_APPLY="✨"
-ICON_BACKUP="💾"
-ICON_RESTORE="📁"
-ICON_UPDATE="🔄"
-ICON_SEARCH="🔍"
-ICON_LIST="📋"
-ICON_CONFIG="⚙️"
-ICON_HELP="❓"
+# Icons and Symbols (using ASCII alternatives for better compatibility)
+readonly ICON_SUCCESS="[OK]"
+readonly ICON_ERROR="[ERROR]"
+readonly ICON_WARNING="[WARN]"
+readonly ICON_INFO="[INFO]"
+readonly ICON_DOWNLOAD="[DOWN]"
+readonly ICON_UPLOAD="[UP]"
+readonly ICON_CREATE="[NEW]"
+readonly ICON_DELETE="[DEL]"
+readonly ICON_APPLY="[APPLY]"
+readonly ICON_BACKUP="[BACKUP]"
+readonly ICON_RESTORE="[RESTORE]"
+readonly ICON_UPDATE="[UPDATE]"
+readonly ICON_SEARCH="[SEARCH]"
+readonly ICON_LIST="[LIST]"
+readonly ICON_CONFIG="[CONFIG]"
+readonly ICON_HELP="[HELP]"
 
-# Support d'internationalisation basique
-declare -A LANG_STRINGS
-LANG_STRINGS=(
-    ["welcome"]="Bienvenue dans Cursux - Gestionnaire de curseurs Linux avancé"
-    ["current_cursor"]="Curseur actuel"
-    ["no_cursors_found"]="Aucun curseur trouvé"
-    ["cursor_applied"]="Curseur appliqué avec succès"
-    ["cursor_created"]="Curseur personnalisé créé avec succès"
-    ["operation_cancelled"]="Opération annulée"
-    ["invalid_option"]="Option invalide"
-    ["file_not_found"]="Fichier non trouvé"
-    ["download_complete"]="Téléchargement terminé"
-    ["conversion_complete"]="Conversion terminée"
+# Internationalization strings
+declare -A LANG_STRINGS=(
+    ["welcome"]="Welcome to Cursux - Advanced Linux Cursor Manager"
+    ["current_cursor"]="Current cursor"
+    ["no_cursors_found"]="No cursors found"
+    ["cursor_applied"]="Cursor applied successfully"
+    ["cursor_created"]="Custom cursor created successfully"
+    ["operation_cancelled"]="Operation cancelled"
+    ["invalid_option"]="Invalid option"
+    ["file_not_found"]="File not found"
+    ["download_complete"]="Download complete"
+    ["conversion_complete"]="Conversion complete"
 )
 
-# Fonction de logging
+# Global variables
+CURSUX_GITHUB_USER="${CURSUX_GITHUB_USER:-}"
+CURSUX_GITHUB_REPO="${CURSUX_GITHUB_REPO:-}"
+DEBUG_MODE="${CURSUX_DEBUG:-0}"
+
+# Logging function
 log_message() {
     local level="$1"
     local message="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
     echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
     
-    if [ "$level" = "ERROR" ]; then
-        echo -e "${RED}${ICON_ERROR} $message${NC}" >&2
-    elif [ "$level" = "WARNING" ]; then
-        echo -e "${YELLOW}${ICON_WARNING} $message${NC}"
-    elif [ "$level" = "SUCCESS" ]; then
-        echo -e "${GREEN}${ICON_SUCCESS} $message${NC}"
-    else
-        echo -e "${BLUE}${ICON_INFO} $message${NC}"
-    fi
+    case "$level" in
+        "ERROR")
+            echo -e "${RED}${ICON_ERROR} $message${NC}" >&2
+            ;;
+        "WARNING")
+            echo -e "${YELLOW}${ICON_WARNING} $message${NC}"
+            ;;
+        "SUCCESS")
+            echo -e "${GREEN}${ICON_SUCCESS} $message${NC}"
+            ;;
+        "INFO")
+            echo -e "${BLUE}${ICON_INFO} $message${NC}"
+            ;;
+        "DEBUG")
+            if [ "$DEBUG_MODE" = "1" ]; then
+                echo -e "${GRAY}[DEBUG] $message${NC}"
+            fi
+            ;;
+    esac
 }
 
-# Logo amélioré avec version
+# Enhanced logo display
 show_logo() {
     clear
     echo -e "${PURPLE}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║          ██████╗██╗   ██╗██████╗ ███████╗██╗   ██╗██╗  ██╗    ║"
-    echo "║         ██╔════╝██║   ██║██╔══██╗██╔════╝██║   ██║╚██╗██╔╝    ║"
-    echo "║         ██║     ██║   ██║██████╔╝███████╗██║   ██║ ╚███╔╝     ║"
-    echo "║         ██║     ██║   ██║██╔══██╗╚════██║██║   ██║ ██╔██╗     ║"
-    echo "║         ╚██████╗╚██████╔╝██║  ██║███████║╚██████╔╝██╔╝ ██╗    ║"
-    echo "║          ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝    ║"
-    echo "║                                                              ║"
-    echo "║              ${WHITE}Linux Cursor Manager Advanced v$CURSUX_VERSION${PURPLE}            ║"
-    echo "║               ${WHITE}Alternative professionnelle à Custom Cursor${PURPLE}         ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    cat << 'EOF'
+╔══════════════════════════════════════════════════════════════╗
+║          ██████╗██╗   ██╗██████╗ ███████╗██╗   ██╗██╗  ██╗    ║
+║         ██╔════╝██║   ██║██╔══██╗██╔════╝██║   ██║╚██╗██╔╝    ║
+║         ██║     ██║   ██║██████╔╝███████╗██║   ██║ ╚███╔╝     ║
+║         ██║     ██║   ██║██╔══██╗╚════██║██║   ██║ ██╔██╗     ║
+║         ╚██████╗╚██████╔╝██║  ██║███████║╚██████╔╝██╔╝ ██╗    ║
+║          ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝    ║
+║                                                              ║
+║              Linux Cursor Manager Advanced v3.0.0           ║
+║               Professional Alternative to Custom Cursor     ║
+╚══════════════════════════════════════════════════════════════╝
+EOF
     echo -e "${NC}"
 }
 
-# Fonction d'aide étendue
+# Extended help function
 show_help() {
-    echo -e "${WHITE}${BOLD}CURSUX - Gestionnaire de Curseurs Linux Avancé v$CURSUX_VERSION${NC}"
-    echo ""
-    echo -e "${CYAN}${BOLD}UTILISATION:${NC}"
-    echo "  cursux [OPTION] [ARGUMENTS]"
-    echo ""
-    echo -e "${CYAN}${BOLD}OPTIONS PRINCIPALES:${NC}"
-    echo "  ${GREEN}-i, --install${NC}       Installer/Télécharger des curseurs"
-    echo "  ${GREEN}-c, --create${NC}        Créer un curseur personnalisé"
-    echo "  ${GREEN}-l, --list${NC}          Lister les curseurs disponibles"
-    echo "  ${GREEN}-a, --apply${NC}         Appliquer un curseur"
-    echo "  ${GREEN}-r, --remove${NC}        Supprimer un curseur"
-    echo "  ${GREEN}-s, --search${NC}        Rechercher des curseurs"
-    echo "  ${GREEN}--convert${NC}           Convertir curseurs Windows (.cur/.ani) vers Linux"
-    echo ""
-    echo -e "${CYAN}${BOLD}GESTION DES DONNÉES:${NC}"
-    echo "  ${GREEN}-b, --backup${NC}        Sauvegarder la configuration"
-    echo "  ${GREEN}--restore${NC}           Restaurer une sauvegarde"
-    echo "  ${GREEN}--export${NC}            Exporter un curseur vers .cursuxpack"
-    echo "  ${GREEN}--import${NC}            Importer un fichier .cursuxpack"
-    echo ""
-    echo -e "${CYAN}${BOLD}REPOSITORY GITHUB:${NC}"
-    echo "  ${GREEN}--repo-sync${NC}         Synchroniser avec le repository GitHub"
-    echo "  ${GREEN}--repo-search${NC}       Rechercher dans le repository"
-    echo "  ${GREEN}--repo-install${NC}      Installer depuis le repository"
-    echo ""
-    echo -e "${CYAN}${BOLD}ANIMATION ET EFFETS:${NC}"
-    echo "  ${GREEN}--animate${NC}           Créer un curseur animé depuis GIF/vidéo"
-    echo "  ${GREEN}--effects${NC}           Appliquer des effets (ombre, couleur, etc.)"
-    echo "  ${GREEN}--batch${NC}             Traitement par lots"
-    echo ""
-    echo -e "${CYAN}${BOLD}CONFIGURATION:${NC}"
-    echo "  ${GREEN}--config${NC}            Éditer la configuration"
-    echo "  ${GREEN}--setup-repo${NC}        Configurer le repository GitHub"
-    echo "  ${GREEN}-u, --update${NC}        Mettre à jour Cursux"
-    echo "  ${GREEN}--debug${NC}             Mode débogage verbose"
-    echo "  ${GREEN}-h, --help${NC}          Afficher cette aide"
-    echo ""
-    echo -e "${YELLOW}${BOLD}EXEMPLES:${NC}"
-    echo "  ${CYAN}cursux --create image.png --size 32 --hotspot 16,16${NC}"
-    echo "  ${CYAN}cursux --convert windows_cursor.cur${NC}"
-    echo "  ${CYAN}cursux --animate animation.gif --fps 10${NC}"
-    echo "  ${CYAN}cursux --repo-search \"minimal\"${NC}"
-    echo "  ${CYAN}cursux --effects --shadow --color \"#ff0000\"${NC}"
-    echo "  ${CYAN}cursux --batch --input-dir ./cursors --output-dir ./converted${NC}"
-    echo ""
-    echo -e "${PURPLE}${BOLD}VARIABLES D'ENVIRONNEMENT:${NC}"
-    echo "  ${CYAN}CURSUX_GITHUB_USER${NC}  - Nom d'utilisateur GitHub"
-    echo "  ${CYAN}CURSUX_GITHUB_REPO${NC}  - Nom du repository"
-    echo "  ${CYAN}CURSUX_DEBUG${NC}        - Active le mode débogage (1/0)"
-    echo ""
+    cat << EOF
+${WHITE}${BOLD}CURSUX - Advanced Linux Cursor Manager v$CURSUX_VERSION${NC}
+
+${CYAN}${BOLD}USAGE:${NC}
+  cursux [OPTION] [ARGUMENTS]
+
+${CYAN}${BOLD}MAIN OPTIONS:${NC}
+  ${GREEN}-i, --install${NC}       Install/Download cursors
+  ${GREEN}-c, --create${NC}        Create custom cursor
+  ${GREEN}-l, --list${NC}          List available cursors
+  ${GREEN}-a, --apply${NC}         Apply cursor
+  ${GREEN}-r, --remove${NC}        Remove cursor
+  ${GREEN}-s, --search${NC}        Search cursors
+  ${GREEN}--convert${NC}           Convert Windows cursors (.cur/.ani) to Linux
+  ${GREEN}--animate${NC}           Create animated cursor from GIF/video
+
+${CYAN}${BOLD}DATA MANAGEMENT:${NC}
+  ${GREEN}-b, --backup${NC}        Backup configuration
+  ${GREEN}--restore${NC}           Restore backup
+  ${GREEN}--export${NC}            Export cursor to .cursuxpack
+  ${GREEN}--import${NC}            Import .cursuxpack file
+
+${CYAN}${BOLD}GITHUB REPOSITORY:${NC}
+  ${GREEN}--repo-sync${NC}         Sync with GitHub repository
+  ${GREEN}--repo-search${NC}       Search in repository
+  ${GREEN}--repo-install${NC}      Install from repository
+  ${GREEN}--setup-repo${NC}        Configure GitHub repository
+
+${CYAN}${BOLD}EFFECTS AND ANIMATION:${NC}
+  ${GREEN}--effects${NC}           Apply effects (shadow, color, etc.)
+  ${GREEN}--batch${NC}             Batch processing
+  ${GREEN}--resize${NC}            Resize cursors
+
+${CYAN}${BOLD}CONFIGURATION:${NC}
+  ${GREEN}--config${NC}            Edit configuration
+  ${GREEN}-u, --update${NC}        Update Cursux
+  ${GREEN}--debug${NC}             Verbose debug mode
+  ${GREEN}--cleanup${NC}           Clean cache and temp files
+  ${GREEN}-h, --help${NC}          Show this help
+  ${GREEN}-v, --version${NC}       Show version
+
+${YELLOW}${BOLD}EXAMPLES:${NC}
+  ${CYAN}cursux --create image.png --size 32 --hotspot 16,16${NC}
+  ${CYAN}cursux --convert windows_cursor.cur${NC}
+  ${CYAN}cursux --animate animation.gif --fps 10${NC}
+  ${CYAN}cursux --repo-search "minimal"${NC}
+  ${CYAN}cursux --effects --shadow --color "#ff0000"${NC}
+  ${CYAN}cursux --batch --input-dir ./cursors --output-dir ./converted${NC}
+
+${PURPLE}${BOLD}ENVIRONMENT VARIABLES:${NC}
+  ${CYAN}CURSUX_GITHUB_USER${NC}  - GitHub username
+  ${CYAN}CURSUX_GITHUB_REPO${NC}  - Repository name
+  ${CYAN}CURSUX_DEBUG${NC}        - Enable debug mode (1/0)
+EOF
 }
 
-# Vérification des dépendances étendue
+# Enhanced dependency checking
 check_dependencies() {
-    local deps_required=("curl" "jq" "convert" "xcursorgen" "file")
-    local deps_optional=("dialog" "whiptail" "git" "ffmpeg" "gifsicle")
-    local missing_required=()
-    local missing_optional=()
+    local -a deps_required=("curl" "jq" "convert" "file")
+    local -a deps_optional=("dialog" "whiptail" "git" "ffmpeg" "gifsicle" "xcursorgen")
+    local -a missing_required=()
+    local -a missing_optional=()
     
-    log_message "INFO" "Vérification des dépendances..."
+    log_message "INFO" "Checking dependencies..."
     
-    # Dépendances requises
+    # Check required dependencies
     for dep in "${deps_required[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_required+=("$dep")
         fi
     done
     
-    # Dépendances optionnelles
+    # Check optional dependencies
     for dep in "${deps_optional[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_optional+=("$dep")
@@ -193,28 +215,28 @@ check_dependencies() {
     done
     
     if [ ${#missing_required[@]} -ne 0 ]; then
-        log_message "ERROR" "Dépendances requises manquantes: ${missing_required[*]}"
-        echo -e "${YELLOW}Installez-les avec:${NC}"
-        echo "  ${CYAN}Ubuntu/Debian:${NC} sudo apt install curl jq imagemagick x11-apps file"
-        echo "  ${CYAN}Fedora:${NC} sudo dnf install curl jq ImageMagick libXcursor file"
-        echo "  ${CYAN}Arch:${NC} sudo pacman -S curl jq imagemagick libxcursor file"
-        echo "  ${CYAN}openSUSE:${NC} sudo zypper install curl jq ImageMagick libXcursor file"
+        log_message "ERROR" "Missing required dependencies: ${missing_required[*]}"
+        echo -e "${YELLOW}Install them with:${NC}"
+        echo "  ${CYAN}Ubuntu/Debian:${NC} sudo apt install curl jq imagemagick file"
+        echo "  ${CYAN}Fedora:${NC} sudo dnf install curl jq ImageMagick file"
+        echo "  ${CYAN}Arch:${NC} sudo pacman -S curl jq imagemagick file"
+        echo "  ${CYAN}openSUSE:${NC} sudo zypper install curl jq ImageMagick file"
         exit 1
     fi
     
     if [ ${#missing_optional[@]} -ne 0 ]; then
-        log_message "WARNING" "Dépendances optionnelles manquantes: ${missing_optional[*]}"
-        echo -e "${YELLOW}${ICON_INFO} Certaines fonctionnalités avancées ne seront pas disponibles${NC}"
-        echo -e "${CYAN}Pour activer toutes les fonctionnalités, installez:${NC}"
-        echo "  ${CYAN}Ubuntu/Debian:${NC} sudo apt install dialog git ffmpeg gifsicle"
-        echo "  ${CYAN}Fedora:${NC} sudo dnf install dialog git ffmpeg gifsicle"
-        echo "  ${CYAN}Arch:${NC} sudo pacman -S dialog git ffmpeg gifsicle"
+        log_message "WARNING" "Missing optional dependencies: ${missing_optional[*]}"
+        echo -e "${YELLOW}${ICON_INFO} Some advanced features may not be available${NC}"
+        echo -e "${CYAN}To enable all features, install:${NC}"
+        echo "  ${CYAN}Ubuntu/Debian:${NC} sudo apt install dialog git ffmpeg gifsicle x11-apps"
+        echo "  ${CYAN}Fedora:${NC} sudo dnf install dialog git ffmpeg gifsicle xorg-x11-apps"
+        echo "  ${CYAN}Arch:${NC} sudo pacman -S dialog git ffmpeg gifsicle xorg-xsetroot"
     fi
     
-    log_message "SUCCESS" "Vérification des dépendances terminée"
+    log_message "SUCCESS" "Dependency check completed"
 }
 
-# Configuration JSON avancée
+# Initialize JSON configuration
 init_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         cat > "$CONFIG_FILE" << EOF
@@ -226,8 +248,8 @@ init_config() {
     "cursor_theme_path": "$HOME/.local/share/icons",
     "backup_count": 10,
     "github": {
-        "user": "$GITHUB_REPO_USER",
-        "repository": "$GITHUB_REPO_NAME",
+        "user": "$CURSUX_GITHUB_USER",
+        "repository": "$CURSUX_GITHUB_REPO",
         "auto_sync": false,
         "last_sync": ""
     },
@@ -237,7 +259,7 @@ init_config() {
         "animation_preview": true
     },
     "effects": {
-        "default_shadow": true,
+        "default_shadow": false,
         "default_shadow_color": "#000000",
         "default_shadow_opacity": 0.5,
         "default_shadow_blur": 2
@@ -253,44 +275,51 @@ init_config() {
         "quick_apply": true,
         "remember_last": true,
         "auto_backup": true
+    },
+    "desktop_environments": {
+        "gnome": true,
+        "kde": true,
+        "xfce": true,
+        "mate": true,
+        "cinnamon": true
     }
 }
 EOF
-        log_message "SUCCESS" "Configuration par défaut créée"
+        log_message "SUCCESS" "Default configuration created"
     fi
 }
 
-# Initialisation complète
+# Complete initialization
 init_cursux() {
-    echo -e "${BLUE}${ICON_CONFIG} Initialisation de Cursux...${NC}"
+    echo -e "${BLUE}${ICON_CONFIG} Initializing Cursux...${NC}"
     
-    # Créer tous les répertoires
-    local directories=("$CURSORS_DIR" "$CUSTOM_DIR" "$TEMP_DIR" "$BACKUP_DIR" "$CACHE_DIR" "$REPO_DIR")
+    # Create all directories
+    local -a directories=("$CURSORS_DIR" "$CUSTOM_DIR" "$TEMP_DIR" "$BACKUP_DIR" "$CACHE_DIR" "$REPO_DIR")
     for dir in "${directories[@]}"; do
         mkdir -p "$dir"
-        log_message "INFO" "Répertoire créé: $dir"
+        log_message "DEBUG" "Created directory: $dir"
     done
     
-    # Initialiser le fichier de log
+    # Initialize log file
     touch "$LOG_FILE"
     
-    # Créer la configuration JSON
+    # Create JSON configuration
     init_config
     
-    # Créer les fichiers d'index
+    # Create index files
     echo '{"cursors": [], "last_updated": ""}' > "$REPO_DIR/index.json"
-    echo '{"favorites": [], "recent": []}' > "$CURSUX_DIR/user_data.json"
+    echo '{"favorites": [], "recent": [], "installed": []}' > "$CURSUX_DIR/user_data.json"
     
-    log_message "SUCCESS" "Cursux initialisé avec succès"
+    log_message "SUCCESS" "Cursux initialized successfully"
 }
 
-# Détection de l'environnement de bureau
+# Detect desktop environment
 detect_desktop_environment() {
     local de="unknown"
     
-    if [ "$XDG_CURRENT_DESKTOP" ]; then
+    if [ -n "${XDG_CURRENT_DESKTOP:-}" ]; then
         de="$XDG_CURRENT_DESKTOP"
-    elif [ "$DESKTOP_SESSION" ]; then
+    elif [ -n "${DESKTOP_SESSION:-}" ]; then
         de="$DESKTOP_SESSION"
     elif command -v gnome-shell &> /dev/null; then
         de="GNOME"
@@ -307,21 +336,21 @@ detect_desktop_environment() {
     echo "$de"
 }
 
-# Fonction de recherche avancée
+# Advanced cursor search
 search_cursors() {
     local query="$1"
     local search_type="${2:-all}" # all, local, remote, favorites
     
     if [ -z "$query" ]; then
-        read -p "Terme de recherche: " query
+        read -p "Search term: " query
     fi
     
     if [ -z "$query" ]; then
-        log_message "ERROR" "Terme de recherche requis"
+        log_message "ERROR" "Search term required"
         return 1
     fi
     
-    echo -e "${CYAN}${ICON_SEARCH} Recherche: '$query'${NC}"
+    echo -e "${CYAN}${ICON_SEARCH} Searching: '$query'${NC}"
     echo ""
     
     case "$search_type" in
@@ -343,33 +372,35 @@ search_cursors() {
     esac
 }
 
-# Recherche locale
+# Search local cursors
 search_local_cursors() {
     local query="$1"
     local found=false
     
-    echo -e "${WHITE}${BOLD}Curseurs locaux correspondants:${NC}"
+    echo -e "${WHITE}${BOLD}Local matching cursors:${NC}"
     
-    # Recherche dans les curseurs personnalisés
+    # Search in custom cursors
     if [ -d "$CUSTOM_DIR" ]; then
         for cursor_dir in "$CUSTOM_DIR"/*; do
             if [ -d "$cursor_dir" ]; then
+                local cursor_name
                 cursor_name=$(basename "$cursor_dir")
-                if [[ "$cursor_name" =~ .*"$query".* ]]; then
-                    echo "  ${GREEN}🎨 $cursor_name${NC} (personnalisé)"
+                if [[ "$cursor_name" == *"$query"* ]]; then
+                    echo "  ${GREEN}* $cursor_name${NC} (custom)"
                     found=true
                 fi
             fi
         done
     fi
     
-    # Recherche dans les curseurs téléchargés
+    # Search in downloaded cursors
     if [ -d "$CURSORS_DIR" ]; then
         for cursor_dir in "$CURSORS_DIR"/*; do
             if [ -d "$cursor_dir" ]; then
+                local cursor_name
                 cursor_name=$(basename "$cursor_dir")
-                if [[ "$cursor_name" =~ .*"$query".* ]]; then
-                    echo "  ${BLUE}📦 $cursor_name${NC} (téléchargé)"
+                if [[ "$cursor_name" == *"$query"* ]]; then
+                    echo "  ${BLUE}* $cursor_name${NC} (downloaded)"
                     found=true
                 fi
             fi
@@ -377,37 +408,39 @@ search_local_cursors() {
     fi
     
     if [ "$found" = false ]; then
-        echo "  ${YELLOW}Aucun curseur local trouvé${NC}"
+        echo "  ${YELLOW}No local cursors found${NC}"
     fi
     
     echo ""
 }
 
-# Conversion de curseurs Windows
+# Windows cursor conversion
 convert_windows_cursor() {
     local input_file="$1"
     local output_name="$2"
     
     if [ -z "$input_file" ]; then
-        echo -e "${RED}${ICON_ERROR} Fichier d'entrée requis${NC}"
-        echo "Usage: cursux --convert <fichier.cur|fichier.ani> [nom_sortie]"
+        echo -e "${RED}${ICON_ERROR} Input file required${NC}"
+        echo "Usage: cursux --convert <file.cur|file.ani> [output_name]"
         return 1
     fi
     
     if [ ! -f "$input_file" ]; then
-        log_message "ERROR" "Fichier non trouvé: $input_file"
+        log_message "ERROR" "File not found: $input_file"
         return 1
     fi
     
-    # Détecter le type de fichier
-    local file_type=$(file -b --mime-type "$input_file")
-    local base_name=$(basename "$input_file" | sed 's/\.[^.]*$//')
+    # Detect file type
+    local file_type
+    file_type=$(file -b --mime-type "$input_file")
+    local base_name
+    base_name=$(basename "$input_file" | sed 's/\.[^.]*$//')
     output_name="${output_name:-$base_name}"
     
-    echo -e "${BLUE}${ICON_DOWNLOAD} Conversion de curseur Windows...${NC}"
-    echo "  ${CYAN}Fichier:${NC} $input_file"
+    echo -e "${BLUE}${ICON_DOWNLOAD} Converting Windows cursor...${NC}"
+    echo "  ${CYAN}File:${NC} $input_file"
     echo "  ${CYAN}Type:${NC} $file_type"
-    echo "  ${CYAN}Sortie:${NC} $output_name"
+    echo "  ${CYAN}Output:${NC} $output_name"
     echo ""
     
     local temp_png="$TEMP_DIR/${base_name}.png"
@@ -416,116 +449,124 @@ convert_windows_cursor() {
     
     mkdir -p "$cursors_dir"
     
-    # Conversion selon le type
+    # Convert based on type
     case "$file_type" in
         *"x-cursor"*|*"cursor"*)
-            # Fichier .cur - utiliser ImageMagick
-            convert "$input_file"[0] "$temp_png" 2>/dev/null || {
-                log_message "ERROR" "Impossible de convertir le fichier .cur"
+            # .cur file - use ImageMagick
+            if ! convert "$input_file[0]" "$temp_png" 2>/dev/null; then
+                log_message "ERROR" "Unable to convert .cur file"
                 return 1
-            }
+            fi
             ;;
         *"x-win-bitmap"*|*"bitmap"*)
-            # Fichier .ani ou bitmap
-            convert "$input_file" "$temp_png" 2>/dev/null || {
-                log_message "ERROR" "Impossible de convertir le fichier bitmap"
+            # .ani or bitmap file
+            if ! convert "$input_file" "$temp_png" 2>/dev/null; then
+                log_message "ERROR" "Unable to convert bitmap file"
                 return 1
-            }
+            fi
             ;;
         *)
-            log_message "ERROR" "Type de fichier non supporté: $file_type"
+            log_message "ERROR" "Unsupported file type: $file_type"
             return 1
             ;;
     esac
     
     if [ ! -f "$temp_png" ]; then
-        log_message "ERROR" "Échec de la conversion"
+        log_message "ERROR" "Conversion failed"
         return 1
     fi
     
-    # Obtenir les dimensions de l'image
-    local dimensions=$(identify -format "%wx%h" "$temp_png" 2>/dev/null)
-    local width=$(echo "$dimensions" | cut -d'x' -f1)
-    local height=$(echo "$dimensions" | cut -d'x' -f2)
+    # Get image dimensions
+    local dimensions
+    dimensions=$(identify -format "%wx%h" "$temp_png" 2>/dev/null)
+    local width height
+    width=$(echo "$dimensions" | cut -d'x' -f1)
+    height=$(echo "$dimensions" | cut -d'x' -f2)
     
-    echo -e "${YELLOW}Dimensions détectées: ${width}x${height}${NC}"
+    echo -e "${YELLOW}Detected dimensions: ${width}x${height}${NC}"
     
-    # Demander les paramètres de conversion
-    echo "Configuration du curseur converti:"
-    read -p "Taille du curseur (défaut: $width): " cursor_size
+    # Get conversion parameters
+    echo "Converted cursor configuration:"
+    read -p "Cursor size (default: $width): " cursor_size
     cursor_size=${cursor_size:-$width}
     
-    read -p "Hotspot X (défaut: $((width/2))): " hotspot_x
+    read -p "Hotspot X (default: $((width/2))): " hotspot_x
     hotspot_x=${hotspot_x:-$((width/2))}
     
-    read -p "Hotspot Y (défaut: $((height/2))): " hotspot_y
+    read -p "Hotspot Y (default: $((height/2))): " hotspot_y
     hotspot_y=${hotspot_y:-$((height/2))}
     
-    # Redimensionner si nécessaire
+    # Resize if necessary
     if [ "$cursor_size" != "$width" ]; then
         convert "$temp_png" -resize "${cursor_size}x${cursor_size}" "$temp_png"
     fi
     
-    # Créer le fichier de configuration xcursor
+    # Create xcursor configuration file
     cat > "$TEMP_DIR/cursor.conf" << EOF
 $cursor_size $hotspot_x $hotspot_y $temp_png
 EOF
     
-    # Générer tous les types de curseurs
-    local cursor_types=("default" "pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
+    # Generate all cursor types
+    local -a cursor_types=("default" "pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
     
-    echo -e "${YELLOW}${ICON_CREATE} Génération des curseurs...${NC}"
+    echo -e "${YELLOW}${ICON_CREATE} Generating cursors...${NC}"
     for cursor_type in "${cursor_types[@]}"; do
-        xcursorgen "$TEMP_DIR/cursor.conf" "$cursors_dir/$cursor_type"
+        if command -v xcursorgen &> /dev/null; then
+            xcursorgen "$TEMP_DIR/cursor.conf" "$cursors_dir/$cursor_type"
+        else
+            # Fallback: copy PNG files for environments that support them
+            cp "$temp_png" "$cursors_dir/$cursor_type.png"
+        fi
         echo "  ${GREEN}✓${NC} $cursor_type"
     done
     
-    # Créer les liens symboliques
+    # Create symbolic links
     create_cursor_symlinks "$cursors_dir"
     
-    # Créer le fichier index.theme
-    create_cursor_theme_file "$output_dir" "$output_name" "Curseur converti depuis Windows"
+    # Create theme file
+    create_cursor_theme_file "$output_dir" "$output_name" "Cursor converted from Windows"
     
-    log_message "SUCCESS" "Curseur Windows converti: $output_name"
+    log_message "SUCCESS" "Windows cursor converted: $output_name"
     
-    # Proposer d'appliquer
-    read -p "Appliquer ce curseur maintenant? (o/N): " apply_now
-    if [[ "$apply_now" =~ ^[oOyY]$ ]]; then
+    # Offer to apply
+    read -p "Apply this cursor now? (y/N): " apply_now
+    if [[ "$apply_now" =~ ^[yYoO]$ ]]; then
         apply_cursor "$output_name"
     fi
     
-    # Nettoyer
+    # Clean up
     rm -f "$temp_png" "$TEMP_DIR/cursor.conf"
 }
 
-# Création de curseur animé depuis GIF
+# Create animated cursor from GIF
 create_animated_cursor() {
     local gif_file="$1"
     local output_name="$2"
     local fps="${3:-10}"
     
     if [ -z "$gif_file" ]; then
-        echo -e "${RED}${ICON_ERROR} Fichier GIF requis${NC}"
+        echo -e "${RED}${ICON_ERROR} GIF file required${NC}"
         return 1
     fi
     
     if [ ! -f "$gif_file" ]; then
-        log_message "ERROR" "Fichier GIF non trouvé: $gif_file"
+        log_message "ERROR" "GIF file not found: $gif_file"
         return 1
     fi
     
     if ! command -v gifsicle &> /dev/null; then
-        log_message "ERROR" "gifsicle requis pour les curseurs animés"
-        echo "Installez avec: sudo apt install gifsicle"
+        log_message "ERROR" "gifsicle required for animated cursors"
+        echo "Install with: sudo apt install gifsicle"
         return 1
     fi
     
-    local base_name=$(basename "$gif_file" .gif)
+    local base_name
+    base_name=$(basename "$gif_file" .gif)
     output_name="${output_name:-${base_name}_animated}"
     
-    echo -e "${BLUE}${ICON_CREATE} Création de curseur animé...${NC}"
+    echo -e "${BLUE}${ICON_CREATE} Creating animated cursor...${NC}"
     echo "  ${CYAN}Source:${NC} $gif_file"
-    echo "  ${CYAN}Nom:${NC} $output_name"
+    echo "  ${CYAN}Name:${NC} $output_name"
     echo "  ${CYAN}FPS:${NC} $fps"
     
     local output_dir="$CUSTOM_DIR/$output_name"
@@ -534,88 +575,102 @@ create_animated_cursor() {
     
     mkdir -p "$cursors_dir" "$frames_dir"
     
-    # Extraire les frames du GIF
-    echo -e "${YELLOW}${ICON_DOWNLOAD} Extraction des frames...${NC}"
+    # Extract frames from GIF
+    echo -e "${YELLOW}${ICON_DOWNLOAD} Extracting frames...${NC}"
     gifsicle --explode "$gif_file" --output "$frames_dir/frame"
     
-    local frame_count=$(ls "$frames_dir"/frame.*.gif 2>/dev/null | wc -l)
+    local frame_count
+    frame_count=$(find "$frames_dir" -name "frame.*.gif" 2>/dev/null | wc -l)
     
     if [ "$frame_count" -eq 0 ]; then
-        log_message "ERROR" "Impossible d'extraire les frames du GIF"
+        log_message "ERROR" "Unable to extract frames from GIF"
         return 1
     fi
     
-    echo "  ${GREEN}$frame_count frames extraites${NC}"
+    echo "  ${GREEN}$frame_count frames extracted${NC}"
     
-    # Convertir chaque frame en PNG
-    echo -e "${YELLOW}Conversion des frames...${NC}"
-    local frame_files=()
+    # Convert each frame to PNG
+    echo -e "${YELLOW}Converting frames...${NC}"
+    local -a frame_files=()
     for frame_file in "$frames_dir"/frame.*.gif; do
         if [ -f "$frame_file" ]; then
-            local frame_num=$(basename "$frame_file" .gif | sed 's/frame\.//')
-            local png_file="$frames_dir/frame_$(printf "%03d" "$frame_num").png"
+            local frame_num
+            frame_num=$(basename "$frame_file" .gif | sed 's/frame\.//')
+            local png_file
+            png_file="$frames_dir/frame_$(printf "%03d" "$frame_num").png"
             convert "$frame_file" "$png_file"
             frame_files+=("$png_file")
             echo "  ${GREEN}✓${NC} Frame $frame_num"
         fi
     done
     
-    # Demander les paramètres
-    read -p "Taille du curseur (défaut: 32): " cursor_size
+    # Get parameters
+    read -p "Cursor size (default: 32): " cursor_size
     cursor_size=${cursor_size:-32}
     
-    read -p "Hotspot X (défaut: 16): " hotspot_x
+    read -p "Hotspot X (default: 16): " hotspot_x
     hotspot_x=${hotspot_x:-16}
     
-    read -p "Hotspot Y (défaut: 16): " hotspot_y
+    read -p "Hotspot Y (default: 16): " hotspot_y
     hotspot_y=${hotspot_y:-16}
     
-    # Créer le fichier de configuration xcursor pour animation
-    local delay=$((1000 / fps))
+    # Create xcursor configuration for animation
+    local delay
+    delay=$((1000 / fps))
     cat > "$TEMP_DIR/animated.conf" << EOF
 EOF
     
     for png_file in "${frame_files[@]}"; do
-        # Redimensionner chaque frame
+        # Resize each frame
         convert "$png_file" -resize "${cursor_size}x${cursor_size}" "$png_file"
         echo "$cursor_size $hotspot_x $hotspot_y $png_file $delay" >> "$TEMP_DIR/animated.conf"
     done
     
-    # Générer le curseur animé
-    echo -e "${YELLOW}${ICON_CREATE} Génération du curseur animé...${NC}"
-    xcursorgen "$TEMP_DIR/animated.conf" "$cursors_dir/default"
+    # Generate animated cursor
+    echo -e "${YELLOW}${ICON_CREATE} Generating animated cursor...${NC}"
+    if command -v xcursorgen &> /dev/null; then
+        xcursorgen "$TEMP_DIR/animated.conf" "$cursors_dir/default"
+    else
+        # Fallback for systems without xcursorgen
+        log_message "WARNING" "xcursorgen not found, creating static cursor from first frame"
+        cp "${frame_files[0]}" "$cursors_dir/default.png"
+    fi
     
-    # Créer des copies pour tous les types
-    local cursor_types=("pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
+    # Create copies for all types
+    local -a cursor_types=("pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
     for cursor_type in "${cursor_types[@]}"; do
-        cp "$cursors_dir/default" "$cursors_dir/$cursor_type"
+        if [ -f "$cursors_dir/default" ]; then
+            cp "$cursors_dir/default" "$cursors_dir/$cursor_type"
+        else
+            cp "$cursors_dir/default.png" "$cursors_dir/$cursor_type.png"
+        fi
     done
     
-    # Créer les liens symboliques
+    # Create symbolic links
     create_cursor_symlinks "$cursors_dir"
     
-    # Créer le fichier theme
-    create_cursor_theme_file "$output_dir" "$output_name" "Curseur animé créé depuis GIF"
+    # Create theme file
+    create_cursor_theme_file "$output_dir" "$output_name" "Animated cursor created from GIF"
     
-    log_message "SUCCESS" "Curseur animé créé: $output_name"
+    log_message "SUCCESS" "Animated cursor created: $output_name"
     
-    # Nettoyer
+    # Clean up
     rm -rf "$frames_dir" "$TEMP_DIR/animated.conf"
     
-    # Proposer d'appliquer
-    read -p "Appliquer ce curseur animé maintenant? (o/N): " apply_now
-    if [[ "$apply_now" =~ ^[oOyY]$ ]]; then
+    # Offer to apply
+    read -p "Apply this animated cursor now? (y/N): " apply_now
+    if [[ "$apply_now" =~ ^[yYoO]$ ]]; then
         apply_cursor "$output_name"
     fi
 }
 
-# Fonction pour créer les liens symboliques de curseurs
+# Create cursor symbolic links
 create_cursor_symlinks() {
     local cursors_dir="$1"
     
-    cd "$cursors_dir"
+    cd "$cursors_dir" || return 1
     
-    # Liens standards X11
+    # Standard X11 links
     ln -sf "default" "left_ptr" 2>/dev/null || true
     ln -sf "pointer" "pointing_hand" 2>/dev/null || true
     ln -sf "text" "ibeam" 2>/dev/null || true
@@ -629,7 +684,7 @@ create_cursor_symlinks() {
     ln -sf "move" "fleur" 2>/dev/null || true
     ln -sf "move" "size_all" 2>/dev/null || true
     
-    # Liens de redimensionnement
+    # Resize links
     ln -sf "default" "top_left_corner" 2>/dev/null || true
     ln -sf "default" "top_right_corner" 2>/dev/null || true
     ln -sf "default" "bottom_left_corner" 2>/dev/null || true
@@ -640,7 +695,7 @@ create_cursor_symlinks() {
     ln -sf "default" "bottom_side" 2>/dev/null || true
 }
 
-# Créer le fichier index.theme
+# Create index.theme file
 create_cursor_theme_file() {
     local theme_dir="$1"
     local theme_name="$2"
@@ -657,210 +712,209 @@ Name=$theme_name
 EOF
 }
 
-# Synchronisation avec le repository GitHub
+# GitHub repository synchronization
 sync_github_repository() {
-    local github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
-    local github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
+    local github_user github_repo
+    github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
+    github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
     
     if [ -z "$github_user" ] || [ -z "$github_repo" ]; then
-        echo -e "${YELLOW}${ICON_WARNING} Repository GitHub non configuré${NC}"
-        echo "Utilisez: cursux --setup-repo"
+        echo -e "${YELLOW}${ICON_WARNING} GitHub repository not configured${NC}"
+        echo "Use: cursux --setup-repo"
         return 1
     fi
     
-    echo -e "${BLUE}${ICON_DOWNLOAD} Synchronisation avec $github_user/$github_repo...${NC}"
+    echo -e "${BLUE}${ICON_DOWNLOAD} Syncing with $github_user/$github_repo...${NC}"
     
     local api_url="$GITHUB_API_BASE/repos/$github_user/$github_repo/contents"
     local temp_index="$TEMP_DIR/repo_index.json"
     
-    # Télécharger l'index du repository
+    # Download repository index
     if curl -s "$api_url" > "$temp_index"; then
         echo -e "${GREEN}${ICON_SUCCESS} Repository accessible${NC}"
         
-        # Parser les fichiers disponibles
-        local cursor_files=($(jq -r '.[] | select(.name | test("\\.(cur|ani|png|gif|zip|tar\\.gz|tar\\.xz)$"; "i")) | .name' "$temp_index" 2>/dev/null || echo ""))
+        # Parse available files
+        local cursor_files
+        cursor_files=$(jq -r '.[] | select(.name | test("\\.(cur|ani|png|gif|zip|tar\\.gz|tar\\.xz)$"; "i")) | .name' "$temp_index" 2>/dev/null || echo "")
         
-        if [ ${#cursor_files[@]} -gt 0 ]; then
-            echo -e "${CYAN}Curseurs disponibles dans le repository:${NC}"
-            for i in "${!cursor_files[@]}"; do
-                echo "  $((i+1)). ${cursor_files[$i]}"
-            done
+        if [ -n "$cursor_files" ]; then
+            echo -e "${CYAN}Available cursors in repository:${NC}"
+            echo "$cursor_files" | nl
             
-            # Mettre à jour l'index local
-            jq --argjson files "$(printf '%s\n' "${cursor_files[@]}" | jq -R . | jq -s .)" \
+            # Update local index
+            jq --argjson files "$(echo "$cursor_files" | jq -R . | jq -s .)" \
                --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                '.cursors = $files | .last_updated = $timestamp' \
                "$REPO_DIR/index.json" > "$TEMP_DIR/new_index.json"
             
             mv "$TEMP_DIR/new_index.json" "$REPO_DIR/index.json"
             
-            # Mettre à jour la configuration
+            # Update configuration
             jq --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                '.github.last_sync = $timestamp' \
                "$CONFIG_FILE" > "$TEMP_DIR/new_config.json"
             mv "$TEMP_DIR/new_config.json" "$CONFIG_FILE"
             
-            log_message "SUCCESS" "Synchronisation terminée - ${#cursor_files[@]} curseurs trouvés"
+            local cursor_count
+            cursor_count=$(echo "$cursor_files" | wc -l)
+            log_message "SUCCESS" "Sync completed - $cursor_count cursors found"
         else
-            echo -e "${YELLOW}${ICON_WARNING} Aucun curseur trouvé dans le repository${NC}"
+            echo -e "${YELLOW}${ICON_WARNING} No cursors found in repository${NC}"
         fi
     else
-        log_message "ERROR" "Impossible d'accéder au repository GitHub"
+        log_message "ERROR" "Unable to access GitHub repository"
         return 1
     fi
     
     rm -f "$temp_index"
 }
 
-# Recherche dans le repository distant
+# Search remote repository
 search_remote_cursors() {
     local query="$1"
-    local github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
-    local github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
+    local github_user github_repo
+    github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
+    github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
     
-    echo -e "${WHITE}${BOLD}Repository GitHub ($github_user/$github_repo):${NC}"
+    echo -e "${WHITE}${BOLD}GitHub Repository ($github_user/$github_repo):${NC}"
     
     if [ -z "$github_user" ] || [ -z "$github_repo" ]; then
-        echo "  ${YELLOW}Repository non configuré${NC}"
+        echo "  ${YELLOW}Repository not configured${NC}"
         return
     fi
     
     local repo_index="$REPO_DIR/index.json"
     if [ ! -f "$repo_index" ]; then
-        echo "  ${YELLOW}Index local non trouvé - utilisez --repo-sync${NC}"
+        echo "  ${YELLOW}Local index not found - use --repo-sync${NC}"
         return
     fi
     
-    local matching_cursors=($(jq -r ".cursors[] | select(. | test(\"$query\"; \"i\"))" "$repo_index" 2>/dev/null || echo ""))
+    local matching_cursors
+    matching_cursors=$(jq -r ".cursors[] | select(. | test(\"$query\"; \"i\"))" "$repo_index" 2>/dev/null || echo "")
     
-    if [ ${#matching_cursors[@]} -gt 0 ]; then
-        for cursor in "${matching_cursors[@]}"; do
-            echo "  ${PURPLE}🌐 $cursor${NC} (repository)"
+    if [ -n "$matching_cursors" ]; then
+        echo "$matching_cursors" | while read -r cursor; do
+            echo "  ${PURPLE}* $cursor${NC} (repository)"
         done
     else
-        echo "  ${YELLOW}Aucun curseur trouvé dans le repository${NC}"
+        echo "  ${YELLOW}No cursors found in repository${NC}"
     fi
     
     echo ""
 }
 
-# Installation depuis le repository GitHub
+# Install from GitHub repository
 install_from_repository() {
     local cursor_name="$1"
-    local github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
-    local github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
+    local github_user github_repo
+    github_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
+    github_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
     
     if [ -z "$github_user" ] || [ -z "$github_repo" ]; then
-        log_message "ERROR" "Repository GitHub non configuré"
+        log_message "ERROR" "GitHub repository not configured"
         return 1
     fi
     
     if [ -z "$cursor_name" ]; then
-        # Afficher la liste des curseurs disponibles
+        # Show available cursors list
         local repo_index="$REPO_DIR/index.json"
         if [ ! -f "$repo_index" ]; then
-            echo -e "${YELLOW}${ICON_WARNING} Synchronisez d'abord avec --repo-sync${NC}"
+            echo -e "${YELLOW}${ICON_WARNING} Sync first with --repo-sync${NC}"
             return 1
         fi
         
-        local available_cursors=($(jq -r '.cursors[]' "$repo_index" 2>/dev/null || echo ""))
-        if [ ${#available_cursors[@]} -eq 0 ]; then
-            echo -e "${YELLOW}${ICON_WARNING} Aucun curseur disponible${NC}"
+        local available_cursors
+        available_cursors=$(jq -r '.cursors[]' "$repo_index" 2>/dev/null || echo "")
+        if [ -z "$available_cursors" ]; then
+            echo -e "${YELLOW}${ICON_WARNING} No cursors available${NC}"
             return 1
         fi
         
-        echo -e "${CYAN}Curseurs disponibles dans le repository:${NC}"
-        for i in "${!available_cursors[@]}"; do
-            echo "  $((i+1)). ${available_cursors[$i]}"
-        done
+        echo -e "${CYAN}Available cursors in repository:${NC}"
+        echo "$available_cursors" | nl
         
-        read -p "Choisissez un curseur (1-${#available_cursors[@]}): " choice
+        local cursor_count
+        cursor_count=$(echo "$available_cursors" | wc -l)
+        read -p "Choose cursor (1-$cursor_count): " choice
         
-        if [ "$choice" -ge 1 ] && [ "$choice" -le "${#available_cursors[@]}" ]; then
-            cursor_name="${available_cursors[$((choice-1))]}"
+        if [ "$choice" -ge 1 ] && [ "$choice" -le "$cursor_count" ]; then
+            cursor_name=$(echo "$available_cursors" | sed -n "${choice}p")
         else
-            log_message "ERROR" "Choix invalide"
+            log_message "ERROR" "Invalid choice"
             return 1
         fi
     fi
     
-    echo -e "${BLUE}${ICON_DOWNLOAD} Installation de '$cursor_name' depuis le repository...${NC}"
+    echo -e "${BLUE}${ICON_DOWNLOAD} Installing '$cursor_name' from repository...${NC}"
     
     local download_url="$GITHUB_RAW_BASE/$github_user/$github_repo/main/$cursor_name"
     local temp_file="$TEMP_DIR/$cursor_name"
     
     if curl -L -o "$temp_file" "$download_url"; then
-        echo -e "${GREEN}${ICON_SUCCESS} Téléchargement réussi${NC}"
+        echo -e "${GREEN}${ICON_SUCCESS} Download successful${NC}"
         
-        # Déterminer le type de fichier et traiter en conséquence
-        local file_type=$(file -b --mime-type "$temp_file")
-        local base_name=$(basename "$cursor_name" | sed 's/\.[^.]*$//')
+        # Determine file type and process accordingly
+        local file_type
+        file_type=$(file -b --mime-type "$temp_file")
+        local base_name
+        base_name=$(basename "$cursor_name" | sed 's/\.[^.]*$//')
         
         case "$file_type" in
             *"zip"*|*"compressed"*)
-                echo -e "${YELLOW}Extraction de l'archive...${NC}"
-                unzip -q "$temp_file" -d "$TEMP_DIR/extracted/"
-                # Traiter les fichiers extraits
-                process_extracted_cursors "$TEMP_DIR/extracted" "$base_name"
+                echo -e "${YELLOW}Extracting archive...${NC}"
+                extract_and_install_cursor "$temp_file" "$base_name"
                 ;;
             *"image/png"*|*"image/jpeg"*)
-                echo -e "${YELLOW}Création du curseur depuis l'image...${NC}"
+                echo -e "${YELLOW}Creating cursor from image...${NC}"
                 create_cursor_from_image "$temp_file" "$base_name"
                 ;;
             *"image/gif"*)
-                echo -e "${YELLOW}Création du curseur animé depuis le GIF...${NC}"
+                echo -e "${YELLOW}Creating animated cursor from GIF...${NC}"
                 create_animated_cursor "$temp_file" "$base_name"
                 ;;
             *"cursor"*)
-                echo -e "${YELLOW}Conversion du curseur Windows...${NC}"
+                echo -e "${YELLOW}Converting Windows cursor...${NC}"
                 convert_windows_cursor "$temp_file" "$base_name"
                 ;;
             *)
-                log_message "WARNING" "Type de fichier non reconnu, tentative de traitement comme archive"
-                # Essayer de traiter comme archive
-                mkdir -p "$TEMP_DIR/extracted"
-                if tar -xf "$temp_file" -C "$TEMP_DIR/extracted" 2>/dev/null; then
-                    process_extracted_cursors "$TEMP_DIR/extracted" "$base_name"
-                else
-                    log_message "ERROR" "Impossible de traiter le fichier"
-                    return 1
-                fi
+                log_message "WARNING" "Unrecognized file type, attempting archive processing"
+                extract_and_install_cursor "$temp_file" "$base_name"
                 ;;
         esac
         
-        log_message "SUCCESS" "Curseur '$base_name' installé depuis le repository"
-        
-        # Nettoyer
+        log_message "SUCCESS" "Cursor '$base_name' installed from repository"
         rm -f "$temp_file"
-        rm -rf "$TEMP_DIR/extracted"
         
     else
-        log_message "ERROR" "Échec du téléchargement"
+        log_message "ERROR" "Download failed"
         return 1
     fi
 }
 
-# Traitement des curseurs extraits d'archives
+# Process extracted cursor files
 process_extracted_cursors() {
     local extracted_dir="$1"
     local cursor_name="$2"
     
-    # Chercher les fichiers de curseurs dans l'archive extraite
-    local cursor_files=($(find "$extracted_dir" -type f \( -name "*.cur" -o -name "*.ani" -o -name "*.png" -o -name "*.gif" \) 2>/dev/null))
+    # Look for cursor files in extracted archive
+    local cursor_files
+    cursor_files=$(find "$extracted_dir" -type f \( -name "*.cur" -o -name "*.ani" -o -name "*.png" -o -name "*.gif" \) 2>/dev/null)
     
-    if [ ${#cursor_files[@]} -eq 0 ]; then
-        # ✅ Détection spéciale des packs Custom Cursor (install.inf + info.customcur + sous-dossiers Normal/Large/ExtraLarge)
+    if [ -z "$cursor_files" ]; then
+        # Special detection for Custom Cursor packs (install.inf + info.customcur + Normal/Large/ExtraLarge subdirs)
         if [ -f "$extracted_dir/install.inf" ] || [ -f "$extracted_dir/info.customcur" ]; then
-            echo -e "${CYAN}Structure Custom Cursor détectée${NC}"
+            echo -e "${CYAN}Custom Cursor structure detected${NC}"
             
-            # Parcourir les sous-dossiers connus
+            # Browse known subdirectories
             for variant in Normal Large ExtraLarge; do
-                local variant_dir=$(find "$extracted_dir" -type d -iname "$variant" | head -n1)
+                local variant_dir
+                variant_dir=$(find "$extracted_dir" -type d -iname "$variant" | head -n1)
                 if [ -n "$variant_dir" ]; then
-                    echo -e "${YELLOW}Conversion des fichiers du dossier $variant/${NC}"
+                    echo -e "${YELLOW}Converting files from $variant/ directory${NC}"
                     for cursor_file in "$variant_dir"/*.cur "$variant_dir"/*.ani; do
                         [ -f "$cursor_file" ] || continue
-                        local base_name=$(basename "$cursor_file" | sed 's/\.[^.]*$//')
+                        local base_name
+                        base_name=$(basename "$cursor_file" | sed 's/\.[^.]*$//')
                         convert_windows_cursor "$cursor_file" "${cursor_name}_${variant}_${base_name}"
                     done
                 fi
@@ -868,20 +922,24 @@ process_extracted_cursors() {
             return 0
         fi
         
-        # 🔙 Fallback existant (dossier contenant "cursor")
-        local cursor_dirs=($(find "$extracted_dir" -type d -name "*cursor*" 2>/dev/null))
-        if [ ${#cursor_dirs[@]} -gt 0 ]; then
-            cp -r "${cursor_dirs[0]}" "$CURSORS_DIR/$cursor_name"
-            echo -e "${GREEN}${ICON_SUCCESS} Curseur structuré copié${NC}"
+        # Fallback: directory containing "cursor"
+        local cursor_dirs
+        cursor_dirs=$(find "$extracted_dir" -type d -name "*cursor*" 2>/dev/null)
+        if [ -n "$cursor_dirs" ]; then
+            local first_cursor_dir
+            first_cursor_dir=$(echo "$cursor_dirs" | head -n1)
+            cp -r "$first_cursor_dir" "$CURSORS_DIR/$cursor_name"
+            echo -e "${GREEN}${ICON_SUCCESS} Structured cursor copied${NC}"
         else
-            log_message "ERROR" "Aucun fichier de curseur trouvé dans l'archive"
+            log_message "ERROR" "No cursor files found in archive"
             return 1
         fi
     else
-        # 🔁 Traitement standard : chaque fichier trouvé est converti
-        for cursor_file in "${cursor_files[@]}"; do
-            local file_basename=$(basename "$cursor_file")
-            local file_name="${file_basename%.*}"
+        # Standard processing: each found file is converted
+        echo "$cursor_files" | while read -r cursor_file; do
+            local file_basename file_name
+            file_basename=$(basename "$cursor_file")
+            file_name="${file_basename%.*}"
             
             case "$cursor_file" in
                 *.cur|*.ani)
@@ -898,7 +956,7 @@ process_extracted_cursors() {
     fi
 }
 
-# Création de curseur à partir d'une image simple
+# Create cursor from simple image
 create_cursor_from_image() {
     local image_file="$1"
     local cursor_name="$2"
@@ -911,43 +969,47 @@ create_cursor_from_image() {
     
     mkdir -p "$cursors_dir"
     
-    # Redimensionner l'image
+    # Resize image
     local temp_png="$TEMP_DIR/${cursor_name}_resized.png"
     convert "$image_file" -resize "${cursor_size}x${cursor_size}" "$temp_png"
     
-    # Créer le fichier de configuration
+    # Create configuration file
     cat > "$TEMP_DIR/cursor.conf" << EOF
 $cursor_size $hotspot_x $hotspot_y $temp_png
 EOF
     
-    # Générer tous les types de curseurs
-    local cursor_types=("default" "pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
+    # Generate all cursor types
+    local -a cursor_types=("default" "pointer" "hand1" "hand2" "text" "wait" "crosshair" "help" "not-allowed" "move")
     
     for cursor_type in "${cursor_types[@]}"; do
-        xcursorgen "$TEMP_DIR/cursor.conf" "$cursors_dir/$cursor_type"
+        if command -v xcursorgen &> /dev/null; then
+            xcursorgen "$TEMP_DIR/cursor.conf" "$cursors_dir/$cursor_type"
+        else
+            cp "$temp_png" "$cursors_dir/$cursor_type.png"
+        fi
     done
     
-    # Créer les liens symboliques et le fichier theme
+    # Create symbolic links and theme file
     create_cursor_symlinks "$cursors_dir"
-    create_cursor_theme_file "$output_dir" "$cursor_name" "Curseur créé depuis image"
+    create_cursor_theme_file "$output_dir" "$cursor_name" "Cursor created from image"
     
-    # Nettoyer
+    # Clean up
     rm -f "$temp_png" "$TEMP_DIR/cursor.conf"
 }
 
-# Système d'effets visuels
+# Visual effects system
 apply_cursor_effects() {
     local cursor_path="$1"
     local effects_config="$2"
     
     if [ ! -f "$cursor_path" ]; then
-        log_message "ERROR" "Fichier curseur non trouvé: $cursor_path"
+        log_message "ERROR" "Cursor file not found: $cursor_path"
         return 1
     fi
     
-    echo -e "${BLUE}${ICON_CREATE} Application d'effets visuels...${NC}"
+    echo -e "${BLUE}${ICON_CREATE} Applying visual effects...${NC}"
     
-    # Parser la configuration d'effets
+    # Parse effects configuration
     local shadow=false
     local shadow_color="#000000"
     local shadow_opacity="0.5"
@@ -956,252 +1018,259 @@ apply_cursor_effects() {
     local brightness="1.0"
     local contrast="1.0"
     
-    # Mode interactif si pas de configuration fournie
+    # Interactive mode if no configuration provided
     if [ -z "$effects_config" ]; then
-        echo -e "${CYAN}Configuration des effets:${NC}"
+        echo -e "${CYAN}Effects configuration:${NC}"
         
-        read -p "Ajouter une ombre portée? (o/N): " add_shadow
-        if [[ "$add_shadow" =~ ^[oOyY]$ ]]; then
+        read -p "Add drop shadow? (y/N): " add_shadow
+        if [[ "$add_shadow" =~ ^[yYoO]$ ]]; then
             shadow=true
-            read -p "Couleur de l'ombre (hex, défaut: #000000): " shadow_color
+            read -p "Shadow color (hex, default: #000000): " shadow_color
             shadow_color=${shadow_color:-#000000}
-            read -p "Opacité (0.0-1.0, défaut: 0.5): " shadow_opacity
+            read -p "Opacity (0.0-1.0, default: 0.5): " shadow_opacity
             shadow_opacity=${shadow_opacity:-0.5}
-            read -p "Flou (pixels, défaut: 2): " shadow_blur
+            read -p "Blur (pixels, default: 2): " shadow_blur
             shadow_blur=${shadow_blur:-2}
         fi
         
-        read -p "Teinter avec une couleur (hex, optionnel): " tint_color
-        read -p "Luminosité (0.5-2.0, défaut: 1.0): " brightness
+        read -p "Tint with color (hex, optional): " tint_color
+        read -p "Brightness (0.5-2.0, default: 1.0): " brightness
         brightness=${brightness:-1.0}
-        read -p "Contraste (0.5-2.0, défaut: 1.0): " contrast
+        read -p "Contrast (0.5-2.0, default: 1.0): " contrast
         contrast=${contrast:-1.0}
     fi
     
     local temp_image="$TEMP_DIR/cursor_effects.png"
     
-    # Convertir le curseur en image temporaire
-    convert "$cursor_path" "$temp_image" 2>/dev/null || {
-        log_message "ERROR" "Impossible de convertir le curseur en image"
+    # Convert cursor to temporary image
+    if ! convert "$cursor_path" "$temp_image" 2>/dev/null; then
+        log_message "ERROR" "Unable to convert cursor to image"
         return 1
-    }
+    fi
     
-    # Appliquer les effets
+    # Apply effects
     local convert_cmd="convert $temp_image"
     
-    # Ajuster luminosité et contraste
+    # Adjust brightness and contrast
     if [ "$brightness" != "1.0" ] || [ "$contrast" != "1.0" ]; then
-        convert_cmd="$convert_cmd -modulate $(echo "$brightness * 100" | bc | cut -d. -f1),100,100"
+        local brightness_percent
+        brightness_percent=$(echo "$brightness * 100" | bc 2>/dev/null || echo "100")
+        convert_cmd="$convert_cmd -modulate ${brightness_percent%.*},100,100"
         convert_cmd="$convert_cmd -sigmoidal-contrast ${contrast}x50%"
-        echo -e "${YELLOW}  Ajustement luminosité/contraste${NC}"
+        echo -e "${YELLOW}  Adjusting brightness/contrast${NC}"
     fi
     
-    # Appliquer une teinte
+    # Apply tint
     if [ -n "$tint_color" ]; then
         convert_cmd="$convert_cmd -colorize 30%,$tint_color"
-        echo -e "${YELLOW}  Application de la teinte: $tint_color${NC}"
+        echo -e "${YELLOW}  Applying tint: $tint_color${NC}"
     fi
     
-    # Ajouter une ombre portée
+    # Add drop shadow
     if [ "$shadow" = true ]; then
         convert_cmd="$convert_cmd \\( +clone -background '$shadow_color' -shadow ${shadow_opacity}x${shadow_blur}+2+2 \\) +swap -background none -layers merge +repage"
-        echo -e "${YELLOW}  Ajout d'ombre portée${NC}"
+        echo -e "${YELLOW}  Adding drop shadow${NC}"
     fi
     
     convert_cmd="$convert_cmd $temp_image"
     
-    # Exécuter la commande d'effets
-    eval "$convert_cmd" || {
-        log_message "ERROR" "Échec de l'application des effets"
+    # Execute effects command
+    if eval "$convert_cmd"; then
+        echo -e "${GREEN}${ICON_SUCCESS} Effects applied successfully${NC}"
+    else
+        log_message "ERROR" "Failed to apply effects"
         return 1
-    }
-    
-    echo -e "${GREEN}${ICON_SUCCESS} Effets appliqués avec succès${NC}"
-    
-    # Le fichier modifié est maintenant dans $temp_image
-    # Il peut être utilisé pour régénérer le curseur
+    fi
 }
 
-# Export de curseur au format .cursuxpack
+# Export cursor pack
 export_cursor_pack() {
     local cursor_name="$1"
     local output_file="$2"
     
     if [ -z "$cursor_name" ]; then
-        echo -e "${CYAN}Curseurs disponibles pour l'export:${NC}"
+        echo -e "${CYAN}Available cursors for export:${NC}"
         list_cursors
-        read -p "Nom du curseur à exporter: " cursor_name
+        read -p "Cursor name to export: " cursor_name
     fi
     
     if [ -z "$cursor_name" ]; then
-        log_message "ERROR" "Nom de curseur requis"
+        log_message "ERROR" "Cursor name required"
         return 1
     fi
     
-    # Trouver le curseur
-    local cursor_path=""
+    # Find cursor
+    local cursor_path="" cursor_type=""
     if [ -d "$CUSTOM_DIR/$cursor_name" ]; then
         cursor_path="$CUSTOM_DIR/$cursor_name"
+        cursor_type="custom"
     elif [ -d "$CURSORS_DIR/$cursor_name" ]; then
         cursor_path="$CURSORS_DIR/$cursor_name"
+        cursor_type="downloaded"
     else
-        log_message "ERROR" "Curseur '$cursor_name' non trouvé"
+        log_message "ERROR" "Cursor '$cursor_name' not found"
         return 1
     fi
     
     output_file="${output_file:-$cursor_name.cursuxpack}"
     
-    echo -e "${BLUE}${ICON_UPLOAD} Export de '$cursor_name' vers '$output_file'...${NC}"
+    echo -e "${BLUE}${ICON_UPLOAD} Exporting '$cursor_name' to '$output_file'...${NC}"
     
     local temp_dir="$TEMP_DIR/export_$cursor_name"
     mkdir -p "$temp_dir"
     
-    # Copier les fichiers du curseur
+    # Copy cursor files
     cp -r "$cursor_path"/* "$temp_dir/"
     
-    # Créer le fichier de métadonnées
+    # Create metadata file
     cat > "$temp_dir/manifest.json" << EOF
 {
     "name": "$cursor_name",
     "version": "1.0",
     "author": "$(whoami)",
-    "description": "Curseur exporté avec Cursux",
+    "description": "Cursor exported with Cursux",
     "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "cursux_version": "$CURSUX_VERSION",
     "type": "cursor_pack",
-    "files": $(find "$temp_dir" -type f ! -name "manifest.json" -printf '"%P"\n' | jq -s .)
+    "files": $(find "$temp_dir" -type f ! -name "manifest.json" -printf '"%P"\n' | jq -s . 2>/dev/null || echo '[]')
 }
 EOF
     
-    # Créer l'archive
-    (cd "$temp_dir" && tar -czf "../$output_file" .)
+    # Create archive
+    (cd "$temp_dir" && tar -czf "../$output_file" .) || {
+        log_message "ERROR" "Failed to create archive"
+        return 1
+    }
     mv "$TEMP_DIR/$output_file" "./$output_file"
     
-    # Calculer le checksum
-    local checksum=$(sha256sum "$output_file" | cut -d' ' -f1)
+    # Calculate checksum
+    local checksum
+    checksum=$(sha256sum "$output_file" | cut -d' ' -f1)
     echo "$checksum" > "${output_file}.sha256"
     
-    log_message "SUCCESS" "Curseur exporté: $output_file"
-    echo -e "${CYAN}Checksum SHA256: $checksum${NC}"
+    log_message "SUCCESS" "Cursor exported: $output_file"
+    echo -e "${CYAN}SHA256 checksum: $checksum${NC}"
     
-    # Nettoyer
+    # Clean up
     rm -rf "$temp_dir"
 }
 
-# Import de fichier .cursuxpack
+# Import cursor pack
 import_cursor_pack() {
     local pack_file="$1"
     
     if [ -z "$pack_file" ]; then
-        read -p "Chemin vers le fichier .cursuxpack: " pack_file
+        read -p "Path to .cursuxpack file: " pack_file
     fi
     
     if [ ! -f "$pack_file" ]; then
-        log_message "ERROR" "Fichier non trouvé: $pack_file"
+        log_message "ERROR" "File not found: $pack_file"
         return 1
     fi
     
-    echo -e "${BLUE}${ICON_DOWNLOAD} Import de '$pack_file'...${NC}"
+    echo -e "${BLUE}${ICON_DOWNLOAD} Importing '$pack_file'...${NC}"
     
-    # Vérifier le checksum si disponible
+    # Verify checksum if available
     local checksum_file="${pack_file}.sha256"
     if [ -f "$checksum_file" ]; then
-        echo -e "${YELLOW}Vérification de l'intégrité...${NC}"
+        echo -e "${YELLOW}Verifying integrity...${NC}"
         if ! sha256sum -c "$checksum_file"; then
-            log_message "ERROR" "Échec de la vérification d'intégrité"
-            read -p "Continuer malgré tout? (o/N): " continue_anyway
-            if [[ ! "$continue_anyway" =~ ^[oOyY]$ ]]; then
+            log_message "ERROR" "Integrity verification failed"
+            read -p "Continue anyway? (y/N): " continue_anyway
+            if [[ ! "$continue_anyway" =~ ^[yYoO]$ ]]; then
                 return 1
             fi
         else
-            echo -e "${GREEN}${ICON_SUCCESS} Intégrité vérifiée${NC}"
+            echo -e "${GREEN}${ICON_SUCCESS} Integrity verified${NC}"
         fi
     fi
     
-    local temp_dir="$TEMP_DIR/import_$(basename "$pack_file" .cursuxpack)"
+    local temp_dir
+    temp_dir="$TEMP_DIR/import_$(basename "$pack_file" .cursuxpack)"
     mkdir -p "$temp_dir"
     
-    # Extraire l'archive
+    # Extract archive
     if tar -xzf "$pack_file" -C "$temp_dir" 2>/dev/null; then
-        # Lire les métadonnées
+        # Read metadata
         local manifest="$temp_dir/manifest.json"
         if [ -f "$manifest" ]; then
-            local cursor_name=$(jq -r '.name' "$manifest")
-            local cursor_version=$(jq -r '.version' "$manifest")
-            local cursor_author=$(jq -r '.author' "$manifest")
-            local cursor_description=$(jq -r '.description' "$manifest")
+            local cursor_name cursor_version cursor_author cursor_description
+            cursor_name=$(jq -r '.name' "$manifest")
+            cursor_version=$(jq -r '.version' "$manifest")
+            cursor_author=$(jq -r '.author' "$manifest")
+            cursor_description=$(jq -r '.description' "$manifest")
             
-            echo -e "${CYAN}Informations du pack:${NC}"
-            echo "  ${WHITE}Nom:${NC} $cursor_name"
+            echo -e "${CYAN}Pack information:${NC}"
+            echo "  ${WHITE}Name:${NC} $cursor_name"
             echo "  ${WHITE}Version:${NC} $cursor_version"
-            echo "  ${WHITE}Auteur:${NC} $cursor_author"
+            echo "  ${WHITE}Author:${NC} $cursor_author"
             echo "  ${WHITE}Description:${NC} $cursor_description"
             echo ""
             
-            # Vérifier si le curseur existe déjà
+            # Check if cursor already exists
             if [ -d "$CUSTOM_DIR/$cursor_name" ]; then
-                echo -e "${YELLOW}${ICON_WARNING} Le curseur '$cursor_name' existe déjà${NC}"
-                read -p "Remplacer? (o/N): " replace_existing
-                if [[ ! "$replace_existing" =~ ^[oOyY]$ ]]; then
-                    log_message "INFO" "Import annulé"
+                echo -e "${YELLOW}${ICON_WARNING} Cursor '$cursor_name' already exists${NC}"
+                read -p "Replace? (y/N): " replace_existing
+                if [[ ! "$replace_existing" =~ ^[yYoO]$ ]]; then
+                    log_message "INFO" "Import cancelled"
                     rm -rf "$temp_dir"
                     return 0
                 fi
                 rm -rf "$CUSTOM_DIR/$cursor_name"
             fi
             
-            # Copier les fichiers
+            # Copy files
             mkdir -p "$CUSTOM_DIR/$cursor_name"
             cp -r "$temp_dir"/* "$CUSTOM_DIR/$cursor_name/"
-            rm -f "$CUSTOM_DIR/$cursor_name/manifest.json" # Supprimer le manifest de l'installation
+            rm -f "$CUSTOM_DIR/$cursor_name/manifest.json" # Remove manifest from installation
             
-            log_message "SUCCESS" "Curseur '$cursor_name' importé avec succès"
+            log_message "SUCCESS" "Cursor '$cursor_name' imported successfully"
             
-            # Proposer d'appliquer
-            read -p "Appliquer ce curseur maintenant? (o/N): " apply_now
-            if [[ "$apply_now" =~ ^[oOyY]$ ]]; then
+            # Offer to apply
+            read -p "Apply this cursor now? (y/N): " apply_now
+            if [[ "$apply_now" =~ ^[yYoO]$ ]]; then
                 apply_cursor "$cursor_name"
             fi
             
         else
-            log_message "ERROR" "Fichier manifest.json manquant dans le pack"
+            log_message "ERROR" "manifest.json missing from pack"
             return 1
         fi
     else
-        log_message "ERROR" "Impossible d'extraire l'archive"
+        log_message "ERROR" "Unable to extract archive"
         return 1
     fi
     
-    # Nettoyer
+    # Clean up
     rm -rf "$temp_dir"
 }
 
-# Traitement par lots
+# Batch processing
 batch_process() {
     local input_dir="$1"
     local output_dir="$2"
     local operation="$3" # convert, resize, effects
     
     if [ -z "$input_dir" ] || [ ! -d "$input_dir" ]; then
-        log_message "ERROR" "Répertoire d'entrée requis et existant"
+        log_message "ERROR" "Input directory required and must exist"
         return 1
     fi
     
     output_dir="${output_dir:-$input_dir/processed}"
     mkdir -p "$output_dir"
     
-    echo -e "${BLUE}${ICON_CREATE} Traitement par lots: $operation${NC}"
-    echo "  ${CYAN}Entrée:${NC} $input_dir"
-    echo "  ${CYAN}Sortie:${NC} $output_dir"
+    echo -e "${BLUE}${ICON_CREATE} Batch processing: $operation${NC}"
+    echo "  ${CYAN}Input:${NC} $input_dir"
+    echo "  ${CYAN}Output:${NC} $output_dir"
     
-    local processed=0
-    local failed=0
+    local processed=0 failed=0
     
-    # Trouver tous les fichiers de curseurs
+    # Find all cursor files
     while IFS= read -r -d '' file; do
-        echo -e "\n${YELLOW}Traitement: $(basename "$file")${NC}"
+        echo -e "\n${YELLOW}Processing: $(basename "$file")${NC}"
         
-        local base_name=$(basename "$file" | sed 's/\.[^.]*$//')
+        local base_name
+        base_name=$(basename "$file" | sed 's/\.[^.]*$//')
         
         case "$operation" in
             "convert")
@@ -1212,7 +1281,7 @@ batch_process() {
                 fi
                 ;;
             "resize")
-                read -p "Nouvelle taille pour $(basename "$file") (défaut: 32): " new_size
+                read -p "New size for $(basename "$file") (default: 32): " new_size
                 new_size=${new_size:-32}
                 if create_cursor_from_image "$file" "$base_name" "$new_size"; then
                     ((processed++))
@@ -1228,129 +1297,130 @@ batch_process() {
                 fi
                 ;;
             *)
-                log_message "ERROR" "Opération non supportée: $operation"
+                log_message "ERROR" "Unsupported operation: $operation"
                 return 1
                 ;;
         esac
         
     done < <(find "$input_dir" -type f \( -name "*.cur" -o -name "*.ani" -o -name "*.png" -o -name "*.gif" \) -print0)
     
-    echo -e "\n${GREEN}${ICON_SUCCESS} Traitement terminé${NC}"
-    echo "  ${WHITE}Traités avec succès:${NC} $processed"
-    echo "  ${WHITE}Échecs:${NC} $failed"
+    echo -e "\n${GREEN}${ICON_SUCCESS} Processing complete${NC}"
+    echo "  ${WHITE}Successfully processed:${NC} $processed"
+    echo "  ${WHITE}Failed:${NC} $failed"
 }
 
-# Configuration du repository GitHub
+# GitHub repository setup
 setup_github_repository() {
-    echo -e "${BLUE}${ICON_CONFIG} Configuration du repository GitHub${NC}"
+    echo -e "${BLUE}${ICON_CONFIG} GitHub repository configuration${NC}"
     echo ""
     
-    local current_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
-    local current_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
+    local current_user current_repo
+    current_user=$(jq -r '.github.user' "$CONFIG_FILE" 2>/dev/null || echo "")
+    current_repo=$(jq -r '.github.repository' "$CONFIG_FILE" 2>/dev/null || echo "")
     
     if [ -n "$current_user" ] && [ -n "$current_repo" ]; then
-        echo -e "${CYAN}Configuration actuelle:${NC}"
-        echo "  ${WHITE}Utilisateur:${NC} $current_user"
+        echo -e "${CYAN}Current configuration:${NC}"
+        echo "  ${WHITE}User:${NC} $current_user"
         echo "  ${WHITE}Repository:${NC} $current_repo"
         echo ""
     fi
     
-    read -p "Nom d'utilisateur GitHub: " github_user
-    read -p "Nom du repository: " github_repo
+    read -p "GitHub username: " github_user
+    read -p "Repository name: " github_repo
     
     if [ -z "$github_user" ] || [ -z "$github_repo" ]; then
-        log_message "ERROR" "Utilisateur et repository requis"
+        log_message "ERROR" "Username and repository required"
         return 1
     fi
     
-    # Vérifier l'accessibilité du repository
-    echo -e "${YELLOW}${ICON_SEARCH} Vérification du repository...${NC}"
+    # Check repository accessibility
+    echo -e "${YELLOW}${ICON_SEARCH} Checking repository...${NC}"
     local test_url="$GITHUB_API_BASE/repos/$github_user/$github_repo"
     
     if curl -s "$test_url" | jq -e '.name' > /dev/null 2>&1; then
         echo -e "${GREEN}${ICON_SUCCESS} Repository accessible${NC}"
         
-        # Mettre à jour la configuration
+        # Update configuration
         jq --arg user "$github_user" --arg repo "$github_repo" \
            '.github.user = $user | .github.repository = $repo' \
            "$CONFIG_FILE" > "$TEMP_DIR/new_config.json"
         mv "$TEMP_DIR/new_config.json" "$CONFIG_FILE"
         
-        log_message "SUCCESS" "Repository configuré: $github_user/$github_repo"
+        log_message "SUCCESS" "Repository configured: $github_user/$github_repo"
         
-        # Proposer une synchronisation
-        read -p "Synchroniser maintenant? (o/N): " sync_now
-        if [[ "$sync_now" =~ ^[oOyY]$ ]]; then
+        # Offer synchronization
+        read -p "Sync now? (y/N): " sync_now
+        if [[ "$sync_now" =~ ^[yYoO]$ ]]; then
             sync_github_repository
         fi
         
     else
-        log_message "ERROR" "Repository inaccessible ou inexistant"
-        echo "Vérifiez que le repository $github_user/$github_repo existe et est public"
+        log_message "ERROR" "Repository inaccessible or non-existent"
+        echo "Check that repository $github_user/$github_repo exists and is public"
         return 1
     fi
 }
 
-# Application de curseur améliorée avec support multi-environnements
+# Enhanced cursor application with multi-environment support
 apply_cursor() {
     local cursor_name="$1"
     
     if [ -z "$cursor_name" ]; then
-        echo -e "${CYAN}${ICON_LIST} Curseurs disponibles:${NC}"
+        echo -e "${CYAN}${ICON_LIST} Available cursors:${NC}"
         list_cursors
         echo ""
-        read -p "Nom du curseur à appliquer: " cursor_name
+        read -p "Cursor name to apply: " cursor_name
     fi
     
     if [ -z "$cursor_name" ]; then
-        log_message "ERROR" "Nom de curseur requis"
+        log_message "ERROR" "Cursor name required"
         return 1
     fi
     
-    # Chercher le curseur
-    local cursor_path=""
-    local cursor_type=""
+    # Find cursor
+    local cursor_path="" cursor_type=""
     
     if [ -d "$CUSTOM_DIR/$cursor_name" ]; then
         cursor_path="$CUSTOM_DIR/$cursor_name"
-        cursor_type="personnalisé"
+        cursor_type="custom"
     elif [ -d "$CURSORS_DIR/$cursor_name" ]; then
         cursor_path="$CURSORS_DIR/$cursor_name"
-        cursor_type="téléchargé"
+        cursor_type="downloaded"
     elif [ -d "/usr/share/icons/$cursor_name" ]; then
         cursor_path="/usr/share/icons/$cursor_name"
-        cursor_type="système"
+        cursor_type="system"
     elif [ -d "$HOME/.local/share/icons/$cursor_name" ]; then
         cursor_path="$HOME/.local/share/icons/$cursor_name"
-        cursor_type="utilisateur"
+        cursor_type="user"
     else
-        log_message "ERROR" "Curseur '$cursor_name' non trouvé"
+        log_message "ERROR" "Cursor '$cursor_name' not found"
         return 1
     fi
     
-    echo -e "${BLUE}${ICON_APPLY} Application du curseur '$cursor_name' ($cursor_type)...${NC}"
+    echo -e "${BLUE}${ICON_APPLY} Applying cursor '$cursor_name' ($cursor_type)...${NC}"
     
-    # Sauvegarder la configuration actuelle
+    # Backup current configuration
     backup_current_config
     
-    # Détecter l'environnement de bureau
-    local desktop_env=$(detect_desktop_environment)
-    echo -e "${CYAN}Environnement détecté: $desktop_env${NC}"
+    # Detect desktop environment
+    local desktop_env
+    desktop_env=$(detect_desktop_environment)
+    echo -e "${CYAN}Detected environment: $desktop_env${NC}"
     
-    # Copier le curseur si nécessaire
+    # Copy cursor if necessary
     mkdir -p "$HOME/.local/share/icons"
     if [ "$cursor_path" != "$HOME/.local/share/icons/$cursor_name" ]; then
         cp -r "$cursor_path" "$HOME/.local/share/icons/"
     fi
     
-    # Appliquer selon l'environnement de bureau
+    # Apply based on desktop environment
     local applied=false
     
     case "$desktop_env" in
         *"GNOME"*|*"Unity"*)
             if command -v gsettings &> /dev/null; then
                 gsettings set org.gnome.desktop.interface cursor-theme "$cursor_name"
-                log_message "SUCCESS" "Curseur appliqué via gsettings (GNOME)"
+                log_message "SUCCESS" "Cursor applied via gsettings (GNOME)"
                 applied=true
             fi
             ;;
@@ -1358,59 +1428,64 @@ apply_cursor() {
             if command -v kwriteconfig5 &> /dev/null; then
                 kwriteconfig5 --file ~/.config/kcminputrc --group Mouse --key cursorTheme "$cursor_name"
                 kwriteconfig5 --file ~/.config/kdeglobals --group Icons --key Theme "$cursor_name"
-                log_message "SUCCESS" "Curseur appliqué via kwriteconfig5 (KDE)"
+                log_message "SUCCESS" "Cursor applied via kwriteconfig5 (KDE)"
+                applied=true
+            elif command -v kwriteconfig6 &> /dev/null; then
+                kwriteconfig6 --file ~/.config/kcminputrc --group Mouse --key cursorTheme "$cursor_name"
+                kwriteconfig6 --file ~/.config/kdeglobals --group Icons --key Theme "$cursor_name"
+                log_message "SUCCESS" "Cursor applied via kwriteconfig6 (KDE)"
                 applied=true
             fi
             ;;
         *"XFCE"*)
             if command -v xfconf-query &> /dev/null; then
                 xfconf-query -c xsettings -p /Gtk/CursorThemeName -s "$cursor_name"
-                log_message "SUCCESS" "Curseur appliqué via xfconf-query (XFCE)"
+                log_message "SUCCESS" "Cursor applied via xfconf-query (XFCE)"
                 applied=true
             fi
             ;;
         *"MATE"*)
             if command -v dconf &> /dev/null; then
                 dconf write /org/mate/desktop/peripherals/mouse/cursor-theme "'$cursor_name'"
-                log_message "SUCCESS" "Curseur appliqué via dconf (MATE)"
+                log_message "SUCCESS" "Cursor applied via dconf (MATE)"
                 applied=true
             fi
             ;;
         *"Cinnamon"*)
             if command -v dconf &> /dev/null; then
                 dconf write /org/cinnamon/desktop/interface/cursor-theme "'$cursor_name'"
-                log_message "SUCCESS" "Curseur appliqué via dconf (Cinnamon)"
+                log_message "SUCCESS" "Cursor applied via dconf (Cinnamon)"
                 applied=true
             fi
             ;;
     esac
     
-    # Fallback pour tous les environnements - configuration GTK
+    # Fallback for all environments - GTK configuration
     update_gtk_config "$cursor_name"
     
-    # Application X11 directe
+    # Direct X11 application
     if command -v xsetroot &> /dev/null; then
-        XCURSOR_THEME="$cursor_name" xsetroot -cursor_name left_ptr || true
+        XCURSOR_THEME="$cursor_name" xsetroot -cursor_name left_ptr 2>/dev/null || true
     fi
     
-    # Mettre à jour la configuration Cursux
+    # Update Cursux configuration
     jq --arg cursor "$cursor_name" --arg path "$cursor_path" --arg type "$cursor_type" \
        '.current_cursor = $cursor | .last_applied = {name: $cursor, path: $path, type: $type, date: (now | strftime("%Y-%m-%d %H:%M:%S"))}' \
        "$CONFIG_FILE" > "$TEMP_DIR/new_config.json"
     mv "$TEMP_DIR/new_config.json" "$CONFIG_FILE"
     
-    # Ajouter aux récents
+    # Add to recent cursors
     add_to_recent_cursors "$cursor_name"
     
     if [ "$applied" = true ]; then
-        log_message "SUCCESS" "Curseur '$cursor_name' appliqué avec succès!"
-        echo -e "${YELLOW}${ICON_INFO} Redémarrez les applications pour voir tous les changements${NC}"
+        log_message "SUCCESS" "Cursor '$cursor_name' applied successfully!"
+        echo -e "${YELLOW}${ICON_INFO} Restart applications to see all changes${NC}"
     else
-        log_message "WARNING" "Application partielle - certains environnements peuvent nécessiter une déconnexion/reconnexion"
+        log_message "WARNING" "Partial application - some environments may require logout/login"
     fi
 }
 
-# Mise à jour des fichiers de configuration GTK
+# Update GTK configuration files
 update_gtk_config() {
     local cursor_name="$1"
     
@@ -1443,22 +1518,22 @@ update_gtk_config() {
     fi
     echo "gtk-cursor-theme-name=$cursor_name" >> "$gtk4_config"
     
-    log_message "INFO" "Configuration GTK mise à jour"
+    log_message "INFO" "GTK configuration updated"
 }
 
-# Ajouter aux curseurs récents
+# Add to recent cursors
 add_to_recent_cursors() {
     local cursor_name="$1"
     local user_data_file="$CURSUX_DIR/user_data.json"
     
     if [ ! -f "$user_data_file" ]; then
-        echo '{"favorites": [], "recent": []}' > "$user_data_file"
+        echo '{"favorites": [], "recent": [], "installed": []}' > "$user_data_file"
     fi
     
-    # Fixed jq syntax
+    # Update recent cursors list
     jq --arg cursor "$cursor_name" \
         '.recent = ([$cursor] + (.recent - [$cursor])) | 
-        .recent = .recent[0:10]' \
+         .recent = .recent[0:10]' \
         "$user_data_file" > "$TEMP_DIR/new_user_data.json"
     
     if [ $? -eq 0 ]; then
@@ -1467,7 +1542,8 @@ add_to_recent_cursors() {
         rm -f "$TEMP_DIR/new_user_data.json"
     fi
 }
-# Gestion des favoris
+
+# Favorites management
 manage_favorites() {
     local action="$1" # add, remove, list
     local cursor_name="$2"
@@ -1475,13 +1551,13 @@ manage_favorites() {
     local user_data_file="$CURSUX_DIR/user_data.json"
     
     if [ ! -f "$user_data_file" ]; then
-        echo '{"favorites": [], "recent": []}' > "$user_data_file"
+        echo '{"favorites": [], "recent": [], "installed": []}' > "$user_data_file"
     fi
     
     case "$action" in
         "add")
             if [ -z "$cursor_name" ]; then
-                read -p "Nom du curseur à ajouter aux favoris: " cursor_name
+                read -p "Cursor name to add to favorites: " cursor_name
             fi
             
             if [ -n "$cursor_name" ]; then
@@ -1489,14 +1565,14 @@ manage_favorites() {
                    '.favorites |= (. + [$cursor]) | .favorites |= unique' \
                    "$user_data_file" > "$TEMP_DIR/new_user_data.json"
                 mv "$TEMP_DIR/new_user_data.json" "$user_data_file"
-                log_message "SUCCESS" "'$cursor_name' ajouté aux favoris"
+                log_message "SUCCESS" "'$cursor_name' added to favorites"
             fi
             ;;
         "remove")
             if [ -z "$cursor_name" ]; then
-                echo -e "${CYAN}Favoris actuels:${NC}"
+                echo -e "${CYAN}Current favorites:${NC}"
                 jq -r '.favorites[]' "$user_data_file" 2>/dev/null | nl
-                read -p "Nom du curseur à retirer des favoris: " cursor_name
+                read -p "Cursor name to remove from favorites: " cursor_name
             fi
             
             if [ -n "$cursor_name" ]; then
@@ -1504,70 +1580,73 @@ manage_favorites() {
                    '.favorites |= (. - [$cursor])' \
                    "$user_data_file" > "$TEMP_DIR/new_user_data.json"
                 mv "$TEMP_DIR/new_user_data.json" "$user_data_file"
-                log_message "SUCCESS" "'$cursor_name' retiré des favoris"
+                log_message "SUCCESS" "'$cursor_name' removed from favorites"
             fi
             ;;
         "list")
-            echo -e "${CYAN}${ICON_LIST} Curseurs favoris:${NC}"
-            local favorites=($(jq -r '.favorites[]' "$user_data_file" 2>/dev/null || echo ""))
+            echo -e "${CYAN}${ICON_LIST} Favorite cursors:${NC}"
+            local favorites
+            favorites=$(jq -r '.favorites[]' "$user_data_file" 2>/dev/null || echo "")
             
-            if [ ${#favorites[@]} -gt 0 ]; then
-                for fav in "${favorites[@]}"; do
-                    echo "  ${YELLOW}⭐ $fav${NC}"
+            if [ -n "$favorites" ]; then
+                echo "$favorites" | while read -r fav; do
+                    echo "  ${YELLOW}* $fav${NC}"
                 done
             else
-                echo "  ${GRAY}Aucun favori${NC}"
+                echo "  ${GRAY}No favorites${NC}"
             fi
             ;;
     esac
 }
 
-# Recherche de favoris
+# Search favorites
 search_favorites() {
     local query="$1"
     local user_data_file="$CURSUX_DIR/user_data.json"
     
-    echo -e "${WHITE}${BOLD}Favoris correspondants:${NC}"
+    echo -e "${WHITE}${BOLD}Matching favorites:${NC}"
     
     if [ ! -f "$user_data_file" ]; then
-        echo "  ${YELLOW}Aucun favori${NC}"
+        echo "  ${YELLOW}No favorites${NC}"
         return
     fi
     
-    local matching_favorites=($(jq -r ".favorites[] | select(. | test(\"$query\"; \"i\"))" "$user_data_file" 2>/dev/null || echo ""))
+    local matching_favorites
+    matching_favorites=$(jq -r ".favorites[] | select(. | test(\"$query\"; \"i\"))" "$user_data_file" 2>/dev/null || echo "")
     
-    if [ ${#matching_favorites[@]} -gt 0 ]; then
-        for fav in "${matching_favorites[@]}"; do
-            echo "  ${YELLOW}⭐ $fav${NC} (favori)"
+    if [ -n "$matching_favorites" ]; then
+        echo "$matching_favorites" | while read -r fav; do
+            echo "  ${YELLOW}* $fav${NC} (favorite)"
         done
     else
-        echo "  ${YELLOW}Aucun favori correspondant${NC}"
+        echo "  ${YELLOW}No matching favorites${NC}"
     fi
 }
 
-# Sauvegarde améliorée avec métadonnées
+# Enhanced backup with metadata
 backup_current_config() {
     local backup_name="$1"
-    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local timestamp
+    timestamp=$(date +%Y%m%d_%H%M%S)
     backup_name="${backup_name:-backup_$timestamp}"
     
     local backup_file="$BACKUP_DIR/$backup_name.json"
     
-    echo -e "${YELLOW}${ICON_BACKUP} Sauvegarde de la configuration...${NC}"
+    echo -e "${YELLOW}${ICON_BACKUP} Backing up configuration...${NC}"
     
-    # Collecter toutes les informations de configuration
+    # Collect all configuration information
     local current_cursor=""
-    local gtk_theme=""
     
     if command -v gsettings &> /dev/null; then
         current_cursor=$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'" || echo "default")
     fi
     
-    # Lire les configurations GTK
-    local gtk2_cursor=$(grep "gtk-cursor-theme-name" "$HOME/.gtkrc-2.0" 2>/dev/null | cut -d'"' -f2 || echo "")
-    local gtk3_cursor=$(grep "gtk-cursor-theme-name" "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null | cut -d'=' -f2 || echo "")
+    # Read GTK configurations
+    local gtk2_cursor gtk3_cursor
+    gtk2_cursor=$(grep "gtk-cursor-theme-name" "$HOME/.gtkrc-2.0" 2>/dev/null | cut -d'"' -f2 || echo "")
+    gtk3_cursor=$(grep "gtk-cursor-theme-name" "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null | cut -d'=' -f2 || echo "")
     
-    # Créer la sauvegarde complète
+    # Create complete backup
     cat > "$backup_file" << EOF
 {
     "backup_info": {
@@ -1585,68 +1664,81 @@ backup_current_config() {
         "gtkrc_2": $(if [ -f "$HOME/.gtkrc-2.0" ]; then cat "$HOME/.gtkrc-2.0" | jq -Rs .; else echo "null"; fi),
         "gtk3_settings": $(if [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then cat "$HOME/.config/gtk-3.0/settings.ini" | jq -Rs .; else echo "null"; fi)
     },
-    "user_data": $(cat "$CURSUX_DIR/user_data.json" 2>/dev/null || echo '{"favorites": [], "recent": []}')
+    "user_data": $(cat "$CURSUX_DIR/user_data.json" 2>/dev/null || echo '{"favorites": [], "recent": [], "installed": []}')
 }
 EOF
     
-    log_message "SUCCESS" "Sauvegarde créée: $backup_file"
+    log_message "SUCCESS" "Backup created: $backup_file"
     
-    # Nettoyer les anciennes sauvegardes (garder les 10 plus récentes)
-    local backup_count=$(jq -r '.backup_count // 10' "$CONFIG_FILE")
-    local backup_files=($(ls -1t "$BACKUP_DIR"/*.json 2>/dev/null | head -n "$backup_count"))
+    # Clean old backups (keep 10 most recent)
+    local backup_count
+    backup_count=$(jq -r '.backup_count // 10' "$CONFIG_FILE")
+    local old_backups
+    old_backups=$(ls -1t "$BACKUP_DIR"/*.json 2>/dev/null | tail -n +$((backup_count + 1)) || echo "")
     
-    if [ ${#backup_files[@]} -gt "$backup_count" ]; then
-        for old_backup in $(ls -1t "$BACKUP_DIR"/*.json 2>/dev/null | tail -n +$((backup_count + 1))); do
+    if [ -n "$old_backups" ]; then
+        echo "$old_backups" | while read -r old_backup; do
             rm -f "$old_backup"
-            log_message "INFO" "Ancienne sauvegarde supprimée: $(basename "$old_backup")"
+            log_message "INFO" "Old backup removed: $(basename "$old_backup")"
         done
     fi
 }
 
-# Restauration de sauvegarde améliorée
+# Enhanced backup restoration
 restore_backup() {
-    echo -e "${CYAN}${ICON_RESTORE} Sauvegardes disponibles:${NC}"
+    echo -e "${CYAN}${ICON_RESTORE} Available backups:${NC}"
     
-    local backup_files=($(find "$BACKUP_DIR" -name "*.json" -type f 2>/dev/null | sort -r))
+    local backup_files
+    backup_files=$(find "$BACKUP_DIR" -name "*.json" -type f 2>/dev/null | sort -r)
     
-    if [ ${#backup_files[@]} -eq 0 ]; then
-        log_message "WARNING" "Aucune sauvegarde trouvée"
+    if [ -z "$backup_files" ]; then
+        log_message "WARNING" "No backups found"
         return 1
     fi
     
     echo ""
-    for i in "${!backup_files[@]}"; do
-        local backup_file="${backup_files[$i]}"
-        local backup_info=$(jq -r '.backup_info' "$backup_file" 2>/dev/null)
+    local i=1
+    echo "$backup_files" | while read -r backup_file; do
+        local backup_info
+        backup_info=$(jq -r '.backup_info' "$backup_file" 2>/dev/null)
         
         if [ "$backup_info" != "null" ]; then
-            local backup_name=$(echo "$backup_info" | jq -r '.name')
-            local backup_date=$(echo "$backup_info" | jq -r '.date')
-            local backup_desktop=$(echo "$backup_info" | jq -r '.desktop_environment')
-            echo "  $((i+1)). $backup_name ($backup_date) [$backup_desktop]"
+            local backup_name backup_date backup_desktop
+            backup_name=$(echo "$backup_info" | jq -r '.name')
+            backup_date=$(echo "$backup_info" | jq -r '.date')
+            backup_desktop=$(echo "$backup_info" | jq -r '.desktop_environment')
+            echo "  $i. $backup_name ($backup_date) [$backup_desktop]"
         else
-            # Format ancien
-            local backup_name=$(basename "$backup_file" .json)
-            echo "  $((i+1)). $backup_name (format ancien)"
+            # Old format
+            local backup_name
+            backup_name=$(basename "$backup_file" .json)
+            echo "  $i. $backup_name (legacy format)"
         fi
+        i=$((i + 1))
     done
     
     echo ""
-    read -p "Choisissez une sauvegarde à restaurer (1-${#backup_files[@]}): " choice
+    local choice
+    local backup_count
+    backup_count=$(echo "$backup_files" | wc -l)
+    read -p "Choose backup to restore (1-$backup_count): " choice
     
-    if [ "$choice" -ge 1 ] && [ "$choice" -le "${#backup_files[@]}" ]; then
-        local backup_file="${backup_files[$((choice-1))]}"
-        echo -e "${BLUE}${ICON_RESTORE} Restauration de la sauvegarde...${NC}"
+    if [ "$choice" -ge 1 ] && [ "$choice" -le "$backup_count" ]; then
+        local backup_file
+        backup_file=$(echo "$backup_files" | sed -n "${choice}p")
+        echo -e "${BLUE}${ICON_RESTORE} Restoring backup...${NC}"
         
-        # Lire la sauvegarde
-        local cursor_config=$(jq -r '.cursor_config' "$backup_file" 2>/dev/null)
-        local files_backup=$(jq -r '.files_backup' "$backup_file" 2>/dev/null)
+        # Read backup
+        local cursor_config files_backup
+        cursor_config=$(jq -r '.cursor_config' "$backup_file" 2>/dev/null)
+        files_backup=$(jq -r '.files_backup' "$backup_file" 2>/dev/null)
         
         if [ "$cursor_config" != "null" ] && [ "$files_backup" != "null" ]; then
-            # Restauration moderne
-            local current_cursor=$(echo "$cursor_config" | jq -r '.current_cursor')
+            # Modern restoration
+            local current_cursor
+            current_cursor=$(echo "$cursor_config" | jq -r '.current_cursor')
             
-            # Restaurer les fichiers de configuration
+            # Restore configuration files
             if [ "$(echo "$files_backup" | jq -r '.gtkrc_2')" != "null" ]; then
                 echo "$files_backup" | jq -r '.gtkrc_2' > "$HOME/.gtkrc-2.0"
             fi
@@ -1656,235 +1748,229 @@ restore_backup() {
                 echo "$files_backup" | jq -r '.gtk3_settings' > "$HOME/.config/gtk-3.0/settings.ini"
             fi
             
-            # Appliquer le curseur
+            # Apply cursor
             if [ -n "$current_cursor" ] && [ "$current_cursor" != "null" ]; then
                 if command -v gsettings &> /dev/null; then
                     gsettings set org.gnome.desktop.interface cursor-theme "$current_cursor"
                 fi
             fi
             
-            # Restaurer les données utilisateur
-            local user_data=$(jq -r '.user_data' "$backup_file" 2>/dev/null)
+            # Restore user data
+            local user_data
+            user_data=$(jq -r '.user_data' "$backup_file" 2>/dev/null)
             if [ "$user_data" != "null" ]; then
                 echo "$user_data" > "$CURSUX_DIR/user_data.json"
             fi
             
-            log_message "SUCCESS" "Sauvegarde restaurée avec succès"
+            log_message "SUCCESS" "Backup restored successfully"
             
         else
-            # Tentative de restauration du format ancien
-            log_message "WARNING" "Format de sauvegarde ancien détecté"
-            # Code de compatibilité ici si nécessaire
+            # Legacy format compatibility
+            log_message "WARNING" "Legacy backup format detected"
         fi
         
     else
-        log_message "ERROR" "Choix invalide"
+        log_message "ERROR" "Invalid choice"
         return 1
     fi
 }
 
-# Listing avancé avec filtres et tri
+# Advanced listing with filters and sorting
 list_cursors() {
-    local filter="$1" # all, custom, downloaded, system, favorites, recent
-    local sort_by="$2" # name, date, size, type
+    local filter="${1:-all}" # all, custom, downloaded, system, favorites, recent
+    local sort_by="${2:-name}" # name, date, size, type
     
-    filter="${filter:-all}"
-    sort_by="${sort_by:-name}"
-    
-    echo -e "${CYAN}${ICON_LIST} Curseurs disponibles${NC}"
+    echo -e "${CYAN}${ICON_LIST} Available cursors${NC}"
     
     if [ "$filter" != "all" ]; then
-        echo -e "${WHITE}Filtre: $filter${NC}"
+        echo -e "${WHITE}Filter: $filter${NC}"
     fi
     
     echo ""
     
-    declare -A cursor_info
-    
-    # Curseurs personnalisés
+    # Custom cursors
     if [ "$filter" = "all" ] || [ "$filter" = "custom" ]; then
-        echo -e "${WHITE}${BOLD}🎨 Curseurs personnalisés:${NC}"
+        echo -e "${WHITE}${BOLD}Custom cursors:${NC}"
         
         if [ -d "$CUSTOM_DIR" ]; then
-            for cursor_dir in "$CUSTOM_DIR"/*; do
-                if [ -d "$cursor_dir" ]; then
-                    local cursor_name=$(basename "$cursor_dir")
-                    local cursor_size=$(du -sh "$cursor_dir" 2>/dev/null | cut -f1)
-                    local cursor_date=$(stat -c %y "$cursor_dir" 2>/dev/null | cut -d' ' -f1)
-                    
-                    echo "  ${GREEN}• $cursor_name${NC} ${GRAY}($cursor_size, $cursor_date)${NC}"
-                    cursor_info["$cursor_name"]="custom|$cursor_size|$cursor_date"
-                fi
+            find "$CUSTOM_DIR" -maxdepth 1 -type d ! -path "$CUSTOM_DIR" 2>/dev/null | while read -r cursor_dir; do
+                local cursor_name cursor_size cursor_date
+                cursor_name=$(basename "$cursor_dir")
+                cursor_size=$(du -sh "$cursor_dir" 2>/dev/null | cut -f1)
+                cursor_date=$(stat -c %y "$cursor_dir" 2>/dev/null | cut -d' ' -f1)
+                
+                echo "  ${GREEN}* $cursor_name${NC} ${GRAY}($cursor_size, $cursor_date)${NC}"
             done
         else
-            echo "  ${GRAY}Aucun curseur personnalisé${NC}"
+            echo "  ${GRAY}No custom cursors${NC}"
         fi
         echo ""
     fi
     
-    # Curseurs téléchargés
+    # Downloaded cursors
     if [ "$filter" = "all" ] || [ "$filter" = "downloaded" ]; then
-        echo -e "${WHITE}${BOLD}📦 Curseurs téléchargés:${NC}"
+        echo -e "${WHITE}${BOLD}Downloaded cursors:${NC}"
         
         if [ -d "$CURSORS_DIR" ]; then
-            for cursor_dir in "$CURSORS_DIR"/*; do
-                if [ -d "$cursor_dir" ]; then
-                    local cursor_name=$(basename "$cursor_dir")
-                    local cursor_size=$(du -sh "$cursor_dir" 2>/dev/null | cut -f1)
-                    local cursor_date=$(stat -c %y "$cursor_dir" 2>/dev/null | cut -d' ' -f1)
-                    
-                    echo "  ${BLUE}• $cursor_name${NC} ${GRAY}($cursor_size, $cursor_date)${NC}"
-                    cursor_info["$cursor_name"]="downloaded|$cursor_size|$cursor_date"
-                fi
+            find "$CURSORS_DIR" -maxdepth 1 -type d ! -path "$CURSORS_DIR" 2>/dev/null | while read -r cursor_dir; do
+                local cursor_name cursor_size cursor_date
+                cursor_name=$(basename "$cursor_dir")
+                cursor_size=$(du -sh "$cursor_dir" 2>/dev/null | cut -f1)
+                cursor_date=$(stat -c %y "$cursor_dir" 2>/dev/null | cut -d' ' -f1)
+                
+                echo "  ${BLUE}* $cursor_name${NC} ${GRAY}($cursor_size, $cursor_date)${NC}"
             done
         else
-            echo "  ${GRAY}Aucun curseur téléchargé${NC}"
+            echo "  ${GRAY}No downloaded cursors${NC}"
         fi
         echo ""
     fi
     
-    # Curseurs système
+    # System cursors
     if [ "$filter" = "all" ] || [ "$filter" = "system" ]; then
-        echo -e "${WHITE}${BOLD}🖥️ Curseurs système:${NC}"
+        echo -e "${WHITE}${BOLD}System cursors:${NC}"
         
         local found_system=false
         if [ -d "/usr/share/icons" ]; then
-            for cursor_dir in /usr/share/icons/*; do
-                if [ -d "$cursor_dir" ] && [ -d "$cursor_dir/cursors" ]; then
-                    local cursor_name=$(basename "$cursor_dir")
-                    echo "  ${PURPLE}• $cursor_name${NC} ${GRAY}(système)${NC}"
-                    cursor_info["$cursor_name"]="system||"
+            find "/usr/share/icons" -maxdepth 1 -type d 2>/dev/null | while read -r cursor_dir; do
+                if [ -d "$cursor_dir/cursors" ]; then
+                    local cursor_name
+                    cursor_name=$(basename "$cursor_dir")
+                    echo "  ${PURPLE}* $cursor_name${NC} ${GRAY}(system)${NC}"
                     found_system=true
                 fi
             done
         fi
         
         if [ "$found_system" = false ]; then
-            echo "  ${GRAY}Aucun curseur système avec structure cursors/${NC}"
+            echo "  ${GRAY}No system cursors with cursors/ structure${NC}"
         fi
         echo ""
     fi
     
-    # Favoris
+    # Favorites
     if [ "$filter" = "all" ] || [ "$filter" = "favorites" ]; then
         local user_data_file="$CURSUX_DIR/user_data.json"
         if [ -f "$user_data_file" ]; then
-            local favorites=($(jq -r '.favorites[]' "$user_data_file" 2>/dev/null || echo ""))
+            local favorites
+            favorites=$(jq -r '.favorites[]' "$user_data_file" 2>/dev/null || echo "")
             
-            if [ ${#favorites[@]} -gt 0 ]; then
-                echo -e "${WHITE}${BOLD}⭐ Curseurs favoris:${NC}"
-                for fav in "${favorites[@]}"; do
-                    echo "  ${YELLOW}• $fav${NC}"
+            if [ -n "$favorites" ]; then
+                echo -e "${WHITE}${BOLD}Favorite cursors:${NC}"
+                echo "$favorites" | while read -r fav; do
+                    echo "  ${YELLOW}* $fav${NC}"
                 done
                 echo ""
             fi
         fi
     fi
     
-    # Récents
+    # Recent
     if [ "$filter" = "all" ] || [ "$filter" = "recent" ]; then
         local user_data_file="$CURSUX_DIR/user_data.json"
         if [ -f "$user_data_file" ]; then
-            local recent=($(jq -r '.recent[]' "$user_data_file" 2>/dev/null || echo ""))
+            local recent
+            recent=$(jq -r '.recent[]' "$user_data_file" 2>/dev/null || echo "")
             
-            if [ ${#recent[@]} -gt 0 ]; then
-                echo -e "${WHITE}${BOLD}🕒 Curseurs récents:${NC}"
-                for rec in "${recent[@]}"; do
-                    echo "  ${CYAN}• $rec${NC}"
+            if [ -n "$recent" ]; then
+                echo -e "${WHITE}${BOLD}Recent cursors:${NC}"
+                echo "$recent" | while read -r rec; do
+                    echo "  ${CYAN}* $rec${NC}"
                 done
                 echo ""
             fi
         fi
     fi
     
-    # Afficher le curseur actuel
-    local current_cursor=$(jq -r '.current_cursor // empty' "$CONFIG_FILE" 2>/dev/null)
+    # Show current cursor
+    local current_cursor
+    current_cursor=$(jq -r '.current_cursor // empty' "$CONFIG_FILE" 2>/dev/null)
     if [ -n "$current_cursor" ]; then
-        echo -e "${WHITE}${BOLD}✨ Curseur actuel: ${GREEN}$current_cursor${NC}"
+        echo -e "${WHITE}${BOLD}Current cursor: ${GREEN}$current_cursor${NC}"
     fi
 }
 
-# Suppression avancée avec confirmation
+# Advanced removal with confirmation
 remove_cursor() {
     local cursor_name="$1"
     local force="${2:-false}"
     
     if [ -z "$cursor_name" ]; then
-        echo -e "${CYAN}Curseurs supprimables:${NC}"
+        echo -e "${CYAN}Removable cursors:${NC}"
         echo ""
         
-        echo -e "${WHITE}🎨 Curseurs personnalisés:${NC}"
-        find "$CUSTOM_DIR" -maxdepth 1 -type d 2>/dev/null | while read -r cursor; do
-            [ "$cursor" != "$CUSTOM_DIR" ] && basename "$cursor" | sed 's/^/  • /'
+        echo -e "${WHITE}Custom cursors:${NC}"
+        find "$CUSTOM_DIR" -maxdepth 1 -type d ! -path "$CUSTOM_DIR" 2>/dev/null | while read -r cursor; do
+            echo "  * $(basename "$cursor")"
         done
         
         echo ""
-        echo -e "${WHITE}📦 Curseurs téléchargés:${NC}"
-        find "$CURSORS_DIR" -maxdepth 1 -type d 2>/dev/null | while read -r cursor; do
-            [ "$cursor" != "$CURSORS_DIR" ] && basename "$cursor" | sed 's/^/  • /'
+        echo -e "${WHITE}Downloaded cursors:${NC}"
+        find "$CURSORS_DIR" -maxdepth 1 -type d ! -path "$CURSORS_DIR" 2>/dev/null | while read -r cursor; do
+            echo "  * $(basename "$cursor")"
         done
         
         echo ""
-        read -p "Nom du curseur à supprimer: " cursor_name
+        read -p "Cursor name to remove: " cursor_name
     fi
     
     if [ -z "$cursor_name" ]; then
-        log_message "ERROR" "Nom de curseur requis"
+        log_message "ERROR" "Cursor name required"
         return 1
     fi
     
     local removed=false
-    local cursor_paths=()
+    local -a cursor_paths=()
     
-    # Trouver tous les emplacements du curseur
+    # Find all cursor locations
     if [ -d "$CUSTOM_DIR/$cursor_name" ]; then
-        cursor_paths+=("$CUSTOM_DIR/$cursor_name:personnalisé")
+        cursor_paths+=("$CUSTOM_DIR/$cursor_name:custom")
     fi
     
     if [ -d "$CURSORS_DIR/$cursor_name" ]; then
-        cursor_paths+=("$CURSORS_DIR/$cursor_name:téléchargé")
+        cursor_paths+=("$CURSORS_DIR/$cursor_name:downloaded")
     fi
     
     if [ -d "$HOME/.local/share/icons/$cursor_name" ]; then
-        cursor_paths+=("$HOME/.local/share/icons/$cursor_name:installé")
+        cursor_paths+=("$HOME/.local/share/icons/$cursor_name:installed")
     fi
     
     if [ ${#cursor_paths[@]} -eq 0 ]; then
-        log_message "ERROR" "Curseur '$cursor_name' non trouvé"
+        log_message "ERROR" "Cursor '$cursor_name' not found"
         return 1
     fi
     
-    # Afficher ce qui sera supprimé
-    echo -e "${YELLOW}${ICON_WARNING} Le curseur '$cursor_name' sera supprimé des emplacements suivants:${NC}"
+    # Show what will be removed
+    echo -e "${YELLOW}${ICON_WARNING} Cursor '$cursor_name' will be removed from:${NC}"
     for path_info in "${cursor_paths[@]}"; do
         local path="${path_info%:*}"
         local type="${path_info#*:}"
-        echo "  ${RED}• $path${NC} ($type)"
+        echo "  ${RED}* $path${NC} ($type)"
     done
     
     if [ "$force" != "true" ]; then
         echo ""
-        read -p "Confirmer la suppression? (o/N): " confirm
-        if [[ ! "$confirm" =~ ^[oOyY]$ ]]; then
-            log_message "INFO" "Suppression annulée"
+        read -p "Confirm removal? (y/N): " confirm
+        if [[ ! "$confirm" =~ ^[yYoO]$ ]]; then
+            log_message "INFO" "Removal cancelled"
             return 0
         fi
     fi
     
-    # Procéder à la suppression
+    # Proceed with removal
     for path_info in "${cursor_paths[@]}"; do
         local path="${path_info%:*}"
         local type="${path_info#*:}"
         
         if rm -rf "$path"; then
-            log_message "SUCCESS" "Curseur $type supprimé: $path"
+            log_message "SUCCESS" "$type cursor removed: $path"
             removed=true
         else
-            log_message "ERROR" "Échec de suppression: $path"
+            log_message "ERROR" "Failed to remove: $path"
         fi
     done
     
-    # Retirer des favoris et récents
+    # Remove from favorites and recent
     if [ "$removed" = true ]; then
         local user_data_file="$CURSUX_DIR/user_data.json"
         if [ -f "$user_data_file" ]; then
@@ -1894,141 +1980,104 @@ remove_cursor() {
             mv "$TEMP_DIR/new_user_data.json" "$user_data_file"
         fi
         
-        log_message "SUCCESS" "Curseur '$cursor_name' complètement supprimé"
+        log_message "SUCCESS" "Cursor '$cursor_name' completely removed"
     fi
 }
 
-# Interface de menu interactif améliorée
+# Enhanced interactive menu
 interactive_menu() {
     while true; do
         show_logo
         
-        # Afficher les informations système
-        local current_cursor=$(jq -r '.current_cursor // "aucun"' "$CONFIG_FILE" 2>/dev/null)
-        local desktop_env=$(detect_desktop_environment)
+        # Display system information
+        local current_cursor desktop_env
+        current_cursor=$(jq -r '.current_cursor // "none"' "$CONFIG_FILE" 2>/dev/null)
+        desktop_env=$(detect_desktop_environment)
         
-        echo -e "${CYAN}${BOLD}Informations système:${NC}"
+        echo -e "${CYAN}${BOLD}System Information:${NC}"
         echo "  ${WHITE}Environment:${NC} $desktop_env"
-        echo "  ${WHITE}Curseur actuel:${NC} $current_cursor"
-        echo "  ${WHITE}Version Cursux:${NC} $CURSUX_VERSION"
+        echo "  ${WHITE}Current cursor:${NC} $current_cursor"
+        echo "  ${WHITE}Cursux version:${NC} $CURSUX_VERSION"
         echo ""
         
-        echo -e "${CYAN}${BOLD}🎯 Menu Principal${NC}"
+        echo -e "${CYAN}${BOLD}Main Menu${NC}"
         echo ""
-        echo "  ${GREEN}1.${NC}  📦 Installer des curseurs"
-        echo "  ${GREEN}2.${NC}  🎨 Créer un curseur personnalisé"
-        echo "  ${GREEN}3.${NC}  ⚡ Créer un curseur animé (GIF)"
-        echo "  ${GREEN}4.${NC}  🔄 Convertir curseur Windows (.cur/.ani)"
-        echo "  ${GREEN}5.${NC}  📋 Lister les curseurs"
-        echo "  ${GREEN}6.${NC}  🔍 Rechercher des curseurs"
-        echo "  ${GREEN}7.${NC}  ✨ Appliquer un curseur"
-        echo "  ${GREEN}8.${NC}  🗑️  Supprimer un curseur"
+        echo "  ${GREEN}1.${NC}  Install cursors"
+        echo "  ${GREEN}2.${NC}  Create custom cursor"
+        echo "  ${GREEN}3.${NC}  Create animated cursor (GIF)"
+        echo "  ${GREEN}4.${NC}  Convert Windows cursor (.cur/.ani)"
+        echo "  ${GREEN}5.${NC}  List cursors"
+        echo "  ${GREEN}6.${NC}  Search cursors"
+        echo "  ${GREEN}7.${NC}  Apply cursor"
+        echo "  ${GREEN}8.${NC}  Remove cursor"
         echo ""
-        echo "  ${BLUE}9.${NC}  ⭐ Gérer les favoris"
-        echo "  ${BLUE}10.${NC} 🌐 Repository GitHub"
-        echo "  ${BLUE}11.${NC} 📤 Exporter curseur (.cursuxpack)"
-        echo "  ${BLUE}12.${NC} 📥 Importer curseur (.cursuxpack)"
+        echo "  ${BLUE}9.${NC}  Manage favorites"
+        echo "  ${BLUE}10.${NC} GitHub repository"
+        echo "  ${BLUE}11.${NC} Export cursor (.cursuxpack)"
+        echo "  ${BLUE}12.${NC} Import cursor (.cursuxpack)"
         echo ""
-        echo "  ${PURPLE}13.${NC} 🎭 Effets visuels"
-        echo "  ${PURPLE}14.${NC} 📦 Traitement par lots"
-        echo "  ${PURPLE}15.${NC} ⚙️  Configuration"
+        echo "  ${PURPLE}13.${NC} Visual effects"
+        echo "  ${PURPLE}14.${NC} Batch processing"
+        echo "  ${PURPLE}15.${NC} Configuration"
         echo ""
-        echo "  ${YELLOW}16.${NC} 💾 Sauvegarder configuration"
-        echo "  ${YELLOW}17.${NC} 📁 Restaurer sauvegarde"
-        echo "  ${YELLOW}18.${NC} 🔄 Mettre à jour Cursux"
-        echo "  ${YELLOW}19.${NC} ❓ Aide et documentation"
+        echo "  ${YELLOW}16.${NC} Backup configuration"
+        echo "  ${YELLOW}17.${NC} Restore backup"
+        echo "  ${YELLOW}18.${NC} Update Cursux"
+        echo "  ${YELLOW}19.${NC} Help and documentation"
         echo ""
-        echo "  ${RED}0.${NC}  ❌ Quitter"
+        echo "  ${RED}0.${NC}  Exit"
         echo ""
         
-        read -p "Choisissez une option (0-19): " choice
+        read -p "Choose option (0-19): " choice
         
         case $choice in
-            1)
-                install_cursors_menu
-                ;;
-            2)
-                create_cursor_menu
-                ;;
-            3)
-                create_animated_menu
-                ;;
-            4)
-                convert_windows_menu
-                ;;
-            5)
-                list_cursors_menu
-                ;;
-            6)
-                search_cursors_menu
-                ;;
-            7)
-                apply_cursor
-                ;;
-            8)
-                remove_cursor
-                ;;
-            9)
-                favorites_menu
-                ;;
-            10)
-                github_menu
-                ;;
-            11)
-                export_cursor_pack
-                ;;
-            12)
-                import_cursor_pack
-                ;;
-            13)
-                effects_menu
-                ;;
-            14)
-                batch_menu
-                ;;
-            15)
-                configuration_menu
-                ;;
-            16)
-                backup_current_config
-                ;;
-            17)
-                restore_backup
-                ;;
-            18)
-                update_cursux
-                ;;
-            19)
-                show_help | less
-                ;;
+            1) install_cursors_menu ;;
+            2) create_cursor_menu ;;
+            3) create_animated_menu ;;
+            4) convert_windows_menu ;;
+            5) list_cursors_menu ;;
+            6) search_cursors_menu ;;
+            7) apply_cursor ;;
+            8) remove_cursor ;;
+            9) favorites_menu ;;
+            10) github_menu ;;
+            11) export_cursor_pack ;;
+            12) import_cursor_pack ;;
+            13) effects_menu ;;
+            14) batch_menu ;;
+            15) configuration_menu ;;
+            16) backup_current_config ;;
+            17) restore_backup ;;
+            18) update_cursux ;;
+            19) show_help | less ;;
             0)
-                echo -e "${GREEN}${ICON_SUCCESS} Merci d'avoir utilisé Cursux!${NC}"
+                echo -e "${GREEN}${ICON_SUCCESS} Thank you for using Cursux!${NC}"
                 exit 0
                 ;;
             *)
-                log_message "ERROR" "Option invalide: $choice"
+                log_message "ERROR" "Invalid option: $choice"
                 ;;
         esac
         
         echo ""
-        read -p "Appuyez sur Entrée pour continuer..."
+        read -p "Press Enter to continue..."
     done
 }
 
-# Sous-menus
+# Submenu functions
 
-# Menu d'installation de curseurs
+# Cursor installation menu
 install_cursors_menu() {
-    echo -e "${CYAN}${BOLD}📦 Installation de Curseurs${NC}"
+    echo -e "${CYAN}${BOLD}Cursor Installation${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Curseurs populaires prédéfinis"
-    echo "  ${GREEN}2.${NC} Depuis repository GitHub"
-    echo "  ${GREEN}3.${NC} URL directe"
-    echo "  ${GREEN}4.${NC} Fichier local"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Popular predefined cursors"
+    echo "  ${GREEN}2.${NC} From GitHub repository"
+    echo "  ${GREEN}3.${NC} Direct URL"
+    echo "  ${GREEN}4.${NC} Local file"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1) install_popular_cursors ;;
@@ -2036,82 +2085,82 @@ install_cursors_menu() {
         3) install_from_url ;;
         4) install_from_file ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu de création de curseur
+# Create cursor menu
 create_cursor_menu() {
-    echo -e "${CYAN}${BOLD}🎨 Création de Curseur${NC}"
+    echo -e "${CYAN}${BOLD}Create Cursor${NC}"
     echo ""
     
-    read -p "Chemin vers l'image: " image_path
+    read -p "Path to image: " image_path
     if [ ! -f "$image_path" ]; then
-        log_message "ERROR" "Fichier image non trouvé"
+        log_message "ERROR" "Image file not found"
         return 1
     fi
     
-    read -p "Nom du curseur: " cursor_name
-    read -p "Taille (défaut: 32): " cursor_size
+    read -p "Cursor name: " cursor_name
+    read -p "Size (default: 32): " cursor_size
     cursor_size=${cursor_size:-32}
     
-    read -p "Hotspot X (défaut: centre): " hotspot_x
+    read -p "Hotspot X (default: center): " hotspot_x
     hotspot_x=${hotspot_x:-$((cursor_size/2))}
     
-    read -p "Hotspot Y (défaut: centre): " hotspot_y
+    read -p "Hotspot Y (default: center): " hotspot_y
     hotspot_y=${hotspot_y:-$((cursor_size/2))}
     
     create_cursor_from_image "$image_path" "$cursor_name" "$cursor_size" "$hotspot_x" "$hotspot_y"
 }
 
-# Menu d'animation
+# Create animated cursor menu
 create_animated_menu() {
-    echo -e "${CYAN}${BOLD}⚡ Curseur Animé${NC}"
+    echo -e "${CYAN}${BOLD}Animated Cursor${NC}"
     echo ""
     
-    read -p "Chemin vers le GIF: " gif_path
+    read -p "Path to GIF: " gif_path
     if [ ! -f "$gif_path" ]; then
-        log_message "ERROR" "Fichier GIF non trouvé"
+        log_message "ERROR" "GIF file not found"
         return 1
     fi
     
-    read -p "Nom du curseur animé: " cursor_name
-    read -p "FPS (défaut: 10): " fps
+    read -p "Animated cursor name: " cursor_name
+    read -p "FPS (default: 10): " fps
     fps=${fps:-10}
     
     create_animated_cursor "$gif_path" "$cursor_name" "$fps"
 }
 
-# Menu de conversion Windows
+# Convert Windows cursor menu
 convert_windows_menu() {
-    echo -e "${CYAN}${BOLD}🔄 Conversion Windows${NC}"
+    echo -e "${CYAN}${BOLD}Windows Conversion${NC}"
     echo ""
     
-    read -p "Chemin vers le fichier .cur/.ani: " windows_file
+    read -p "Path to .cur/.ani file: " windows_file
     if [ ! -f "$windows_file" ]; then
-        log_message "ERROR" "Fichier non trouvé"
+        log_message "ERROR" "File not found"
         return 1
     fi
     
-    read -p "Nom du curseur converti (optionnel): " cursor_name
+    read -p "Converted cursor name (optional): " cursor_name
     
     convert_windows_cursor "$windows_file" "$cursor_name"
 }
 
-# Menu de listage
+# List cursors menu
 list_cursors_menu() {
-    echo -e "${CYAN}${BOLD}📋 Lister les Curseurs${NC}"
+    echo -e "${CYAN}${BOLD}List Cursors${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Tous les curseurs"
-    echo "  ${GREEN}2.${NC} Curseurs personnalisés"
-    echo "  ${GREEN}3.${NC} Curseurs téléchargés"
-    echo "  ${GREEN}4.${NC} Curseurs système"
-    echo "  ${GREEN}5.${NC} Favoris"
-    echo "  ${GREEN}6.${NC} Récents"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} All cursors"
+    echo "  ${GREEN}2.${NC} Custom cursors"
+    echo "  ${GREEN}3.${NC} Downloaded cursors"
+    echo "  ${GREEN}4.${NC} System cursors"
+    echo "  ${GREEN}5.${NC} Favorites"
+    echo "  ${GREEN}6.${NC} Recent"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1) list_cursors "all" ;;
@@ -2121,138 +2170,138 @@ list_cursors_menu() {
         5) list_cursors "favorites" ;;
         6) list_cursors "recent" ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu de recherche
+# Search cursors menu
 search_cursors_menu() {
-    echo -e "${CYAN}${BOLD}🔍 Recherche de Curseurs${NC}"
+    echo -e "${CYAN}${BOLD}Search Cursors${NC}"
     echo ""
     
-    read -p "Terme de recherche: " search_term
+    read -p "Search term: " search_term
     if [ -n "$search_term" ]; then
         search_cursors "$search_term"
     fi
 }
 
-# Menu des favoris
+# Favorites menu
 favorites_menu() {
-    echo -e "${CYAN}${BOLD}⭐ Gestion des Favoris${NC}"
+    echo -e "${CYAN}${BOLD}Favorites Management${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Ajouter aux favoris"
-    echo "  ${GREEN}2.${NC} Retirer des favoris"
-    echo "  ${GREEN}3.${NC} Lister les favoris"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Add to favorites"
+    echo "  ${GREEN}2.${NC} Remove from favorites"
+    echo "  ${GREEN}3.${NC} List favorites"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1) manage_favorites "add" ;;
         2) manage_favorites "remove" ;;
         3) manage_favorites "list" ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu GitHub
+# GitHub menu
 github_menu() {
-    echo -e "${CYAN}${BOLD}🌐 Repository GitHub${NC}"
+    echo -e "${CYAN}${BOLD}GitHub Repository${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Configurer repository"
-    echo "  ${GREEN}2.${NC} Synchroniser"
-    echo "  ${GREEN}3.${NC} Rechercher dans repository"
-    echo "  ${GREEN}4.${NC} Installer depuis repository"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Configure repository"
+    echo "  ${GREEN}2.${NC} Synchronize"
+    echo "  ${GREEN}3.${NC} Search in repository"
+    echo "  ${GREEN}4.${NC} Install from repository"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1) setup_github_repository ;;
         2) sync_github_repository ;;
         3) 
-            read -p "Terme de recherche: " search_term
+            read -p "Search term: " search_term
             search_remote_cursors "$search_term"
             ;;
         4) install_from_repository ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu des effets
+# Effects menu
 effects_menu() {
-    echo -e "${CYAN}${BOLD}🎭 Effets Visuels${NC}"
+    echo -e "${CYAN}${BOLD}Visual Effects${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Appliquer effets à un curseur"
-    echo "  ${GREEN}2.${NC} Configuration par défaut des effets"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Apply effects to cursor"
+    echo "  ${GREEN}2.${NC} Configure default effects"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1)
-            read -p "Chemin vers le curseur: " cursor_path
+            read -p "Path to cursor: " cursor_path
             apply_cursor_effects "$cursor_path"
             ;;
         2)
             configure_default_effects
             ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu de traitement par lots
+# Batch processing menu
 batch_menu() {
-    echo -e "${CYAN}${BOLD}📦 Traitement par Lots${NC}"
+    echo -e "${CYAN}${BOLD}Batch Processing${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Convertir curseurs Windows"
-    echo "  ${GREEN}2.${NC} Redimensionner curseurs"
-    echo "  ${GREEN}3.${NC} Appliquer effets"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Convert Windows cursors"
+    echo "  ${GREEN}2.${NC} Resize cursors"
+    echo "  ${GREEN}3.${NC} Apply effects"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1)
-            read -p "Répertoire d'entrée: " input_dir
-            read -p "Répertoire de sortie (optionnel): " output_dir
+            read -p "Input directory: " input_dir
+            read -p "Output directory (optional): " output_dir
             batch_process "$input_dir" "$output_dir" "convert"
             ;;
         2)
-            read -p "Répertoire d'entrée: " input_dir
-            read -p "Répertoire de sortie (optionnel): " output_dir
+            read -p "Input directory: " input_dir
+            read -p "Output directory (optional): " output_dir
             batch_process "$input_dir" "$output_dir" "resize"
             ;;
         3)
-            read -p "Répertoire d'entrée: " input_dir
-            read -p "Répertoire de sortie (optionnel): " output_dir
+            read -p "Input directory: " input_dir
+            read -p "Output directory (optional): " output_dir
             batch_process "$input_dir" "$output_dir" "effects"
             ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Menu de configuration
+# Configuration menu
 configuration_menu() {
-    echo -e "${CYAN}${BOLD}⚙️ Configuration${NC}"
+    echo -e "${CYAN}${BOLD}Configuration${NC}"
     echo ""
-    echo "  ${GREEN}1.${NC} Éditer configuration JSON"
-    echo "  ${GREEN}2.${NC} Réinitialiser configuration"
-    echo "  ${GREEN}3.${NC} Voir configuration actuelle"
-    echo "  ${GREEN}4.${NC} Configuration des effets par défaut"
-    echo "  ${GREEN}5.${NC} Nettoyage du cache"
-    echo "  ${GREEN}0.${NC} Retour"
+    echo "  ${GREEN}1.${NC} Edit JSON configuration"
+    echo "  ${GREEN}2.${NC} Reset configuration"
+    echo "  ${GREEN}3.${NC} View current configuration"
+    echo "  ${GREEN}4.${NC} Configure default effects"
+    echo "  ${GREEN}5.${NC} Clean cache"
+    echo "  ${GREEN}0.${NC} Back"
     echo ""
     
-    read -p "Choix: " choice
+    read -p "Choice: " choice
     
     case $choice in
         1) edit_configuration ;;
@@ -2261,13 +2310,13 @@ configuration_menu() {
         4) configure_default_effects ;;
         5) cleanup_cache ;;
         0) return ;;
-        *) log_message "ERROR" "Option invalide" ;;
+        *) log_message "ERROR" "Invalid option" ;;
     esac
 }
 
-# Installation de curseurs populaires
+# Install popular cursors
 install_popular_cursors() {
-    local popular_cursors=(
+    local -a popular_cursors=(
         "Bibata-Modern-Classic:https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Classic.tar.xz"
         "Bibata-Modern-Ice:https://github.com/ful1e5/Bibata_Cursor/releases/latest/download/Bibata-Modern-Ice.tar.xz"
         "Capitaine-Cursors:https://github.com/keeferrourke/capitaine-cursors/archive/refs/heads/master.zip"
@@ -2275,42 +2324,43 @@ install_popular_cursors() {
         "Nordzy-cursors:https://github.com/alvatip/Nordzy-cursors/archive/refs/heads/main.zip"
     )
     
-    echo -e "${CYAN}Curseurs populaires disponibles:${NC}"
+    echo -e "${CYAN}Available popular cursors:${NC}"
     for i in "${!popular_cursors[@]}"; do
-        cursor_info="${popular_cursors[$i]}"
-        cursor_name="${cursor_info%%:*}"
+        local cursor_info="${popular_cursors[$i]}"
+        local cursor_name="${cursor_info%%:*}"
         echo "  $((i+1)). $cursor_name"
     done
-    echo "  0. Tous les curseurs"
+    echo "  0. All cursors"
     echo ""
     
-    read -p "Choisissez (0-${#popular_cursors[@]}): " choice
+    read -p "Choose (0-${#popular_cursors[@]}): " choice
     
     if [ "$choice" = "0" ]; then
         for cursor_info in "${popular_cursors[@]}"; do
             install_cursor_from_url "$cursor_info"
         done
     elif [ "$choice" -ge 1 ] && [ "$choice" -le "${#popular_cursors[@]}" ]; then
-        cursor_info="${popular_cursors[$((choice-1))]}"
+        local cursor_info="${popular_cursors[$((choice-1))]}"
         install_cursor_from_url "$cursor_info"
     else
-        log_message "ERROR" "Choix invalide"
+        log_message "ERROR" "Invalid choice"
     fi
 }
 
-# Installation depuis URL
+# Install from URL
 install_from_url() {
-    read -p "URL du curseur: " cursor_url
+    read -p "Cursor URL: " cursor_url
     if [ -n "$cursor_url" ]; then
         install_cursor_from_url "custom:$cursor_url"
     fi
 }
 
-# Installation depuis fichier local
+# Install from local file
 install_from_file() {
-    read -p "Chemin vers le fichier: " file_path
+    read -p "File path: " file_path
     if [ -f "$file_path" ]; then
-        local base_name=$(basename "$file_path" | sed 's/\.[^.]*$//')
+        local base_name
+        base_name=$(basename "$file_path" | sed 's/\.[^.]*$//')
         
         case "$file_path" in
             *.cur|*.ani)
@@ -2326,15 +2376,15 @@ install_from_file() {
                 create_animated_cursor "$file_path" "$base_name"
                 ;;
             *)
-                log_message "ERROR" "Type de fichier non supporté"
+                log_message "ERROR" "Unsupported file type"
                 ;;
         esac
     else
-        log_message "ERROR" "Fichier non trouvé"
+        log_message "ERROR" "File not found"
     fi
 }
 
-# Fonction d'installation depuis URL
+# URL installation function
 install_cursor_from_url() {
     local cursor_info="$1"
     local cursor_name="${cursor_info%%:*}"
@@ -2344,15 +2394,16 @@ install_cursor_from_url() {
         cursor_name=$(basename "$cursor_url" | sed 's/\.[^.]*$//')
     fi
     
-    echo -e "${BLUE}${ICON_DOWNLOAD} Téléchargement de $cursor_name...${NC}"
+    echo -e "${BLUE}${ICON_DOWNLOAD} Downloading $cursor_name...${NC}"
     
     local temp_file="$TEMP_DIR/$(basename "$cursor_url")"
     
     if curl -L --progress-bar -o "$temp_file" "$cursor_url"; then
-        echo -e "${GREEN}${ICON_SUCCESS} Téléchargement réussi${NC}"
+        echo -e "${GREEN}${ICON_SUCCESS} Download successful${NC}"
         
-        # Déterminer comment traiter le fichier
-        local file_type=$(file -b --mime-type "$temp_file")
+        # Determine file processing method
+        local file_type
+        file_type=$(file -b --mime-type "$temp_file")
         
         case "$file_type" in
             *"zip"*)
@@ -2362,19 +2413,19 @@ install_cursor_from_url() {
                 extract_and_install_cursor "$temp_file" "$cursor_name"
                 ;;
             *)
-                log_message "WARNING" "Type de fichier non reconnu, tentative d'extraction"
+                log_message "WARNING" "Unrecognized file type, attempting extraction"
                 extract_and_install_cursor "$temp_file" "$cursor_name"
                 ;;
         esac
         
         rm -f "$temp_file"
     else
-        log_message "ERROR" "Échec du téléchargement"
+        log_message "ERROR" "Download failed"
         return 1
     fi
 }
 
-# Extraction et installation
+# Archive extraction and installation
 extract_and_install_cursor() {
     local archive_file="$1"
     local cursor_name="$2"
@@ -2382,7 +2433,7 @@ extract_and_install_cursor() {
     
     mkdir -p "$extract_dir"
     
-    # Tenter différentes méthodes d'extraction
+    # Try different extraction methods
     if [[ "$archive_file" == *.zip ]]; then
         unzip -q "$archive_file" -d "$extract_dir"
     elif [[ "$archive_file" == *.tar.xz ]]; then
@@ -2390,59 +2441,64 @@ extract_and_install_cursor() {
     elif [[ "$archive_file" == *.tar.gz ]]; then
         tar -xzf "$archive_file" -C "$extract_dir"
     else
-        # Tentative générique
+        # Generic attempt
         tar -xf "$archive_file" -C "$extract_dir" 2>/dev/null || \
         unzip -q "$archive_file" -d "$extract_dir" 2>/dev/null || {
-            log_message "ERROR" "Impossible d'extraire l'archive"
+            log_message "ERROR" "Unable to extract archive"
             return 1
         }
     fi
     
-    # Chercher le répertoire de curseurs
-    local cursor_dirs=($(find "$extract_dir" -type d -name "*cursor*" 2>/dev/null))
+    # Look for cursor directories
+    local cursor_dirs
+    cursor_dirs=$(find "$extract_dir" -type d -name "*cursor*" 2>/dev/null)
     
-    if [ ${#cursor_dirs[@]} -gt 0 ]; then
-        # Copier le premier répertoire de curseurs trouvé
-        cp -r "${cursor_dirs[0]}" "$CURSORS_DIR/$cursor_name"
-        log_message "SUCCESS" "Curseur '$cursor_name' installé"
+    if [ -n "$cursor_dirs" ]; then
+        # Copy first cursor directory found
+        local first_cursor_dir
+        first_cursor_dir=$(echo "$cursor_dirs" | head -n1)
+        cp -r "$first_cursor_dir" "$CURSORS_DIR/$cursor_name"
+        log_message "SUCCESS" "Cursor '$cursor_name' installed"
     else
-        # Chercher des fichiers de curseurs individuels
-        local cursor_files=($(find "$extract_dir" -type f \( -name "*.cur" -o -name "*.png" -o -name "*.gif" \) 2>/dev/null))
+        # Look for individual cursor files
+        local cursor_files
+        cursor_files=$(find "$extract_dir" -type f \( -name "*.cur" -o -name "*.png" -o -name "*.gif" \) 2>/dev/null)
         
-        if [ ${#cursor_files[@]} -gt 0 ]; then
+        if [ -n "$cursor_files" ]; then
             process_extracted_cursors "$extract_dir" "$cursor_name"
         else
-            log_message "ERROR" "Aucun fichier de curseur trouvé dans l'archive"
+            log_message "ERROR" "No cursor files found in archive"
             return 1
         fi
     fi
     
-    # Nettoyer
+    # Clean up
     rm -rf "$extract_dir"
 }
 
-# Configuration des effets par défaut
+# Configure default effects
 configure_default_effects() {
-    echo -e "${CYAN}${BOLD}Configuration des Effets par Défaut${NC}"
+    echo -e "${CYAN}${BOLD}Default Effects Configuration${NC}"
     echo ""
     
-    local current_shadow=$(jq -r '.effects.default_shadow' "$CONFIG_FILE")
-    local current_shadow_color=$(jq -r '.effects.default_shadow_color' "$CONFIG_FILE")
-    local current_shadow_opacity=$(jq -r '.effects.default_shadow_opacity' "$CONFIG_FILE")
+    local current_shadow current_shadow_color current_shadow_opacity
+    current_shadow=$(jq -r '.effects.default_shadow' "$CONFIG_FILE")
+    current_shadow_color=$(jq -r '.effects.default_shadow_color' "$CONFIG_FILE")
+    current_shadow_opacity=$(jq -r '.effects.default_shadow_opacity' "$CONFIG_FILE")
     
-    echo "Configuration actuelle:"
-    echo "  Ombre par défaut: $current_shadow"
-    echo "  Couleur d'ombre: $current_shadow_color"
-    echo "  Opacité: $current_shadow_opacity"
+    echo "Current configuration:"
+    echo "  Default shadow: $current_shadow"
+    echo "  Shadow color: $current_shadow_color"
+    echo "  Opacity: $current_shadow_opacity"
     echo ""
     
-    read -p "Activer l'ombre par défaut? (o/n): " enable_shadow
-    read -p "Couleur d'ombre (hex): " shadow_color
-    read -p "Opacité (0.0-1.0): " shadow_opacity
-    read -p "Flou (pixels): " shadow_blur
+    read -p "Enable default shadow? (y/n): " enable_shadow
+    read -p "Shadow color (hex): " shadow_color
+    read -p "Opacity (0.0-1.0): " shadow_opacity
+    read -p "Blur (pixels): " shadow_blur
     
-    # Mettre à jour la configuration
-    jq --argjson shadow "$([ "$enable_shadow" = "o" ] && echo true || echo false)" \
+    # Update configuration
+    jq --argjson shadow "$([ "$enable_shadow" = "y" ] && echo true || echo false)" \
        --arg color "${shadow_color:-$current_shadow_color}" \
        --arg opacity "${shadow_opacity:-$current_shadow_opacity}" \
        --arg blur "${shadow_blur:-2}" \
@@ -2453,38 +2509,38 @@ configure_default_effects() {
        "$CONFIG_FILE" > "$TEMP_DIR/new_config.json"
     
     mv "$TEMP_DIR/new_config.json" "$CONFIG_FILE"
-    log_message "SUCCESS" "Configuration des effets mise à jour"
+    log_message "SUCCESS" "Effects configuration updated"
 }
 
-# Édition de la configuration
+# Edit configuration
 edit_configuration() {
     local editor="${EDITOR:-nano}"
     
-    echo -e "${BLUE}${ICON_CONFIG} Ouverture de la configuration avec $editor...${NC}"
-    echo -e "${YELLOW}${ICON_WARNING} Attention: Une configuration invalide peut casser Cursux${NC}"
+    echo -e "${BLUE}${ICON_CONFIG} Opening configuration with $editor...${NC}"
+    echo -e "${YELLOW}${ICON_WARNING} Warning: Invalid configuration may break Cursux${NC}"
     
-    read -p "Continuer? (o/N): " continue_edit
-    if [[ "$continue_edit" =~ ^[oOyY]$ ]]; then
-        # Créer une sauvegarde
+    read -p "Continue? (y/N): " continue_edit
+    if [[ "$continue_edit" =~ ^[yYoO]$ ]]; then
+        # Create backup
         cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
         
-        # Ouvrir l'éditeur
+        # Open editor
         "$editor" "$CONFIG_FILE"
         
-        # Valider la configuration JSON
+        # Validate JSON configuration
         if jq . "$CONFIG_FILE" >/dev/null 2>&1; then
-            log_message "SUCCESS" "Configuration mise à jour et validée"
+            log_message "SUCCESS" "Configuration updated and validated"
             rm -f "$CONFIG_FILE.backup"
         else
-            log_message "ERROR" "Configuration JSON invalide, restauration de la sauvegarde"
+            log_message "ERROR" "Invalid JSON configuration, restoring backup"
             mv "$CONFIG_FILE.backup" "$CONFIG_FILE"
         fi
     fi
 }
 
-# Affichage de la configuration
+# Show configuration
 show_configuration() {
-    echo -e "${CYAN}${BOLD}Configuration Actuelle${NC}"
+    echo -e "${CYAN}${BOLD}Current Configuration${NC}"
     echo ""
     
     if command -v jq &> /dev/null; then
@@ -2494,177 +2550,178 @@ show_configuration() {
     fi
 }
 
-# Réinitialisation de la configuration
+# Reset configuration
 reset_configuration() {
-    echo -e "${YELLOW}${ICON_WARNING} Cela va réinitialiser toute la configuration${NC}"
-    read -p "Confirmer? (o/N): " confirm
+    echo -e "${YELLOW}${ICON_WARNING} This will reset all configuration${NC}"
+    read -p "Confirm? (y/N): " confirm
     
-    if [[ "$confirm" =~ ^[oOyY]$ ]]; then
-        # Sauvegarder l'ancienne configuration
+    if [[ "$confirm" =~ ^[yYoO]$ ]]; then
+        # Backup old configuration
         cp "$CONFIG_FILE" "$BACKUP_DIR/config_backup_$(date +%Y%m%d_%H%M%S).json"
         
-        # Créer une nouvelle configuration par défaut
+        # Create new default configuration
         rm -f "$CONFIG_FILE"
         init_config
         
-        log_message "SUCCESS" "Configuration réinitialisée"
+        log_message "SUCCESS" "Configuration reset"
     fi
 }
 
-# Nettoyage du cache
+# Cache cleanup
 cleanup_cache() {
-    echo -e "${BLUE}${ICON_DELETE} Nettoyage du cache...${NC}"
+    echo -e "${BLUE}${ICON_DELETE} Cleaning cache...${NC}"
     
-    local cache_size=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1)
-    local temp_size=$(du -sh "$TEMP_DIR" 2>/dev/null | cut -f1)
+    local cache_size temp_size
+    cache_size=$(du -sh "$CACHE_DIR" 2>/dev/null | cut -f1)
+    temp_size=$(du -sh "$TEMP_DIR" 2>/dev/null | cut -f1)
     
-    echo "  Cache actuel: $cache_size"
-    echo "  Fichiers temporaires: $temp_size"
+    echo "  Current cache: $cache_size"
+    echo "  Temp files: $temp_size"
     echo ""
     
-    read -p "Nettoyer le cache et les fichiers temporaires? (o/N): " confirm
+    read -p "Clean cache and temp files? (y/N): " confirm
     
-    if [[ "$confirm" =~ ^[oOyY]$ ]]; then
-        # Nettoyer le cache
+    if [[ "$confirm" =~ ^[yYoO]$ ]]; then
+        # Clean cache
         rm -rf "$CACHE_DIR"/*
         rm -rf "$TEMP_DIR"/*
         
-        # Nettoyer les anciens logs (garder les 100 dernières lignes)
+        # Clean old logs (keep last 100 lines)
         if [ -f "$LOG_FILE" ]; then
             tail -n 100 "$LOG_FILE" > "$TEMP_DIR/log_temp"
             mv "$TEMP_DIR/log_temp" "$LOG_FILE"
         fi
         
-        log_message "SUCCESS" "Cache nettoyé"
+        log_message "SUCCESS" "Cache cleaned"
     fi
 }
 
-# Mise à jour de Cursux
+# Update Cursux
 update_cursux() {
-    echo -e "${BLUE}${ICON_UPDATE} Vérification des mises à jour...${NC}"
+    echo -e "${BLUE}${ICON_UPDATE} Checking for updates...${NC}"
     
-    # Dans un vrai cas, on téléchargerait depuis un repository
-    local latest_version="2.0.0"
+    # In a real scenario, this would download from a repository
+    local latest_version="3.0.0"
     
     if [ "$latest_version" = "$CURSUX_VERSION" ]; then
-        echo -e "${GREEN}${ICON_SUCCESS} Cursux est déjà à jour (v$CURSUX_VERSION)${NC}"
+        echo -e "${GREEN}${ICON_SUCCESS} Cursux is up to date (v$CURSUX_VERSION)${NC}"
     else
-        echo -e "${YELLOW}Nouvelle version disponible: v$latest_version${NC}"
-        echo -e "${CYAN}Pour mettre à jour manuellement:${NC}"
-        echo "  1. Téléchargez la dernière version"
-        echo "  2. Sauvegardez votre configuration"
-        echo "  3. Remplacez le script cursux.sh"
-        echo "  4. Restaurez votre configuration"
+        echo -e "${YELLOW}New version available: v$latest_version${NC}"
+        echo -e "${CYAN}To update manually:${NC}"
+        echo "  1. Download latest version"
+        echo "  2. Backup your configuration"
+        echo "  3. Replace cursux.sh script"
+        echo "  4. Restore your configuration"
     fi
     
     echo ""
-    echo -e "${CYAN}Liens utiles:${NC}"
-    echo "  📖 Documentation: https://github.com/cursux/cursux/wiki"
-    echo "  🐛 Signaler un bug: https://github.com/cursux/cursux/issues"
-    echo "  💬 Communauté: https://github.com/cursux/cursux/discussions"
+    echo -e "${CYAN}Useful links:${NC}"
+    echo "  Documentation: https://github.com/cursux/cursux/wiki"
+    echo "  Report bug: https://github.com/cursux/cursux/issues"
+    echo "  Community: https://github.com/cursux/cursux/discussions"
 }
 
-# Fonction principale
+# Main function
 main() {
-    # Vérifier les dépendances
+    # Check dependencies
     check_dependencies
     
-    # Initialiser Cursux
+    # Initialize Cursux
     init_cursux
     
-    # Mode débogage si demandé
+    # Debug mode if requested
     if [ "${CURSUX_DEBUG:-0}" = "1" ] || [[ "$*" == *"--debug"* ]]; then
         set -x
-        log_message "INFO" "Mode débogage activé"
+        log_message "INFO" "Debug mode activated"
     fi
     
-    # Traitement des arguments de ligne de commande
+    # Command line argument processing
     case "${1:-}" in
         -i|--install)
             shift
-            if [ "$1" = "--popular" ]; then
+            if [ "${1:-}" = "--popular" ]; then
                 install_popular_cursors
-            elif [ "$1" = "--url" ]; then
+            elif [ "${1:-}" = "--url" ]; then
                 install_from_url
-            elif [ "$1" = "--file" ]; then
+            elif [ "${1:-}" = "--file" ]; then
                 install_from_file
             else
                 install_cursors_menu
             fi
             ;;
         -c|--create)
-            if [ -n "$2" ]; then
-                create_cursor_from_image "$2" "$3" "$4" "$5" "$6"
+            if [ -n "${2:-}" ]; then
+                create_cursor_from_image "$2" "${3:-}" "${4:-}" "${5:-}" "${6:-}"
             else
                 create_cursor_menu
             fi
             ;;
         --animate)
-            if [ -n "$2" ]; then
-                create_animated_cursor "$2" "$3" "$4"
+            if [ -n "${2:-}" ]; then
+                create_animated_cursor "$2" "${3:-}" "${4:-}"
             else
                 create_animated_menu
             fi
             ;;
         --convert)
-            if [ -n "$2" ]; then
-                convert_windows_cursor "$2" "$3"
+            if [ -n "${2:-}" ]; then
+                convert_windows_cursor "$2" "${3:-}"
             else
                 convert_windows_menu
             fi
             ;;
         -l|--list)
-            list_cursors "$2" "$3"
+            list_cursors "${2:-}" "${3:-}"
             ;;
         -a|--apply)
-            apply_cursor "$2"
+            apply_cursor "${2:-}"
             ;;
         -r|--remove)
-            remove_cursor "$2" "$3"
+            remove_cursor "${2:-}" "${3:-}"
             ;;
         -s|--search)
-            search_cursors "$2" "$3"
+            search_cursors "${2:-}" "${3:-}"
             ;;
         --favorites)
-            manage_favorites "$2" "$3"
+            manage_favorites "${2:-}" "${3:-}"
             ;;
         --export)
-            export_cursor_pack "$2" "$3"
+            export_cursor_pack "${2:-}" "${3:-}"
             ;;
         --import)
-            import_cursor_pack "$2"
+            import_cursor_pack "${2:-}"
             ;;
         --repo-sync)
             sync_github_repository
             ;;
         --repo-search)
-            search_remote_cursors "$2"
+            search_remote_cursors "${2:-}"
             ;;
         --repo-install)
-            install_from_repository "$2"
+            install_from_repository "${2:-}"
             ;;
         --setup-repo)
             setup_github_repository
             ;;
         --effects)
-            apply_cursor_effects "$2" "$3"
+            apply_cursor_effects "${2:-}" "${3:-}"
             ;;
         --batch)
-            batch_process "$2" "$3" "$4"
+            batch_process "${2:-}" "${3:-}" "${4:-}"
             ;;
         --config)
-            if [ "$2" = "edit" ]; then
+            if [ "${2:-}" = "edit" ]; then
                 edit_configuration
-            elif [ "$2" = "show" ]; then
+            elif [ "${2:-}" = "show" ]; then
                 show_configuration
-            elif [ "$2" = "reset" ]; then
+            elif [ "${2:-}" = "reset" ]; then
                 reset_configuration
             else
                 configuration_menu
             fi
             ;;
         -b|--backup)
-            backup_current_config "$2"
+            backup_current_config "${2:-}"
             ;;
         --restore)
             restore_backup
@@ -2686,50 +2743,51 @@ main() {
             echo "Cursux v$CURSUX_VERSION"
             ;;
         "")
-            # Mode interactif par défaut
+            # Interactive mode by default
             interactive_menu
             ;;
         *)
-            log_message "ERROR" "Option inconnue: $1"
-            echo "Utilisez 'cursux --help' pour voir les options disponibles"
+            log_message "ERROR" "Unknown option: $1"
+            echo "Use 'cursux --help' to see available options"
             exit 1
             ;;
     esac
 }
 
-# Fonction de nettoyage à la sortie
+# Exit cleanup function
 cleanup_on_exit() {
-    # Nettoyer les fichiers temporaires
+    # Clean temporary files
     find "$TEMP_DIR" -type f -mmin +60 -delete 2>/dev/null || true
     
-    # Compresser les anciens logs si trop volumineux
-    if [ -f "$LOG_FILE" ] && [ $(wc -l < "$LOG_FILE" 2>/dev/null || echo 0) -gt 1000 ]; then
+    # Compress old logs if too large
+    if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)" -gt 1000 ]; then
         tail -n 500 "$LOG_FILE" > "$LOG_FILE.new"
         mv "$LOG_FILE.new" "$LOG_FILE"
     fi
     
-    # Nettoyer le cache si trop volumineux
-    local cache_size_mb=$(du -sm "$CACHE_DIR" 2>/dev/null | cut -f1 || echo 0)
-    local max_cache_mb=$(jq -r '.advanced.cache_size_mb // 100' "$CONFIG_FILE" 2>/dev/null)
+    # Clean cache if too large
+    local cache_size_mb max_cache_mb
+    cache_size_mb=$(du -sm "$CACHE_DIR" 2>/dev/null | cut -f1 || echo 0)
+    max_cache_mb=$(jq -r '.advanced.cache_size_mb // 100' "$CONFIG_FILE" 2>/dev/null)
     
     if [ "$cache_size_mb" -gt "$max_cache_mb" ]; then
         find "$CACHE_DIR" -type f -atime +7 -delete 2>/dev/null || true
     fi
 }
 
-# Gestion des signaux
+# Signal handling
 trap cleanup_on_exit EXIT
-trap 'log_message "INFO" "Interruption par utilisateur"; exit 130' INT
-trap 'log_message "ERROR" "Script terminé de façon inattendue"; exit 1' TERM
+trap 'log_message "INFO" "User interruption"; exit 130' INT
+trap 'log_message "ERROR" "Script terminated unexpectedly"; exit 1' TERM
 
-# Vérification de l'installation
+# Installation check
 if [ ! -w "$HOME" ]; then
-    log_message "ERROR" "Répertoire home non accessible en écriture"
+    log_message "ERROR" "Home directory not writable"
     exit 1
 fi
 
-# Log du démarrage
-log_message "INFO" "Cursux v$CURSUX_VERSION démarré avec les arguments: $*"
+# Startup logging
+log_message "INFO" "Cursux v$CURSUX_VERSION started with arguments: $*"
 
-# Exécuter la fonction principale
+# Execute main function
 main "$@"
